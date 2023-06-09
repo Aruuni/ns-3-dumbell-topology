@@ -1,6 +1,7 @@
 #include "ns3/applications-module.h"
 #include "ns3/core-module.h"
-#include "ns3/csma-module.h"
+#include "ns3/flow-monitor-module.h"
+#include "ns3/flow-monitor-helper.h"
 #include "ns3/internet-module.h"
 #include "ns3/network-module.h"
 #include "ns3/point-to-point-module.h"
@@ -26,23 +27,27 @@ RTTTracer(Ptr<OutputStreamWrapper> stream, string cca,  Time oldval, Time newval
     cout << Simulator::Now().GetSeconds() << "  |  " << newval.GetMilliSeconds() <<  " | "<< cca <<endl;
 }
 
-uint32_t prev[];
-Time prevTime[];
+uint32_t prevBytes = 0;
+Time prevTime = Seconds(0);
 
 static void
-TraceThroughput(Ptr<FlowMonitor> monitor,  string cca, uint32_t nodeId)
+TraceThroughput(Ptr<FlowMonitor> monitor,  string cca)
 {
     FlowMonitor::FlowStatsContainer stats = monitor->GetFlowStats();
     auto itr = stats.begin();
     Time curTime = Now();
     std::ofstream thr( cca + "-throughput.dat", std::ios::out | std::ios::app);
     thr << curTime << ", "
-        << 8 * (itr->second.txBytes - prev[nodeId]) /
-               (1000 * 1000 * (curTime.GetSeconds() - prevTime[nodeId].GetSeconds()))
+        << 8 * (itr->second.txBytes - prevBytes) /
+               (1000 * 1000 * (curTime.GetSeconds() - prevTime.GetSeconds()))
         << std::endl;
-    prevTime[nodeId] = curTime;
-    prev[nodeId] = itr->second.txBytes;
-    Simulator::Schedule(Seconds(0.1), &TraceThroughput, monitor , cca);
+    cout << curTime << ", "
+        << 8 * (itr->second.txBytes - prevBytes) /
+               (1000 * 1000 * (curTime.GetSeconds() - prevTime.GetSeconds()))
+        << std::endl;
+    prevTime = curTime;
+    prevBytes = itr->second.txBytes;
+    Simulator::Schedule(Seconds(0.1), &TraceThroughput, monitor, cca);
 }
 
 
@@ -73,7 +78,7 @@ main(int argc, char* argv[])
     std::string cca[] = { "TcpBbr" };
     //, "TcpVegas"
     int PORT = 50001;
-    Time stopTime = Seconds(200);
+    Time stopTime = Seconds(1);
     uint packetSize = 1448;
     int Nodes = sizeof(cca) / sizeof(cca[0]);
     Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(4194304));
@@ -175,22 +180,18 @@ main(int argc, char* argv[])
 	}
     Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
-
-    prev = new uint32_t[Nodes];
     ApplicationContainer senderApp, receiverApp;
     for (uint32_t i = 0; i < senders.GetN(); i++) {
-        
         BulkSendHelper sender("ns3::TcpSocketFactory", InetSocketAddress(receiverIFCs.GetAddress(i), PORT));
         sender.SetAttribute("MaxBytes", UintegerValue(0)); // Unlimited data
         senderApp.Add(sender.Install(senders.Get(i)));
         Simulator::Schedule(Seconds(0.1) + MilliSeconds(1), &TraceCwnd,  senders.Get(i)->GetId(), cca[i]);
         Simulator::Schedule(Seconds(0.1) + MilliSeconds(1), &TraceRTT,  senders.Get(i)->GetId(), cca[i]);
-        FlowMonitorHelper flowmon;
-        Ptr<FlowMonitor> monitor = flowmon.Install(senders.Get(i));
-        Simulator::Schedule(Seconds(0 + 0.000001), &TraceThroughput, monitor);
+
     }
 
     senderApp.Start(Seconds(0.0));
+
     senderApp.Stop(stopTime);
 
     // Create receiver applications on each receiver node
@@ -200,7 +201,15 @@ main(int argc, char* argv[])
     }
     receiverApp.Start(Seconds(0.0));
     receiverApp.Stop(stopTime);
-
+    
+    for (int i = 0; i < Nodes; i++) {
+        FlowMonitorHelper flowmon;
+        Simulator::Schedule(Seconds(0.1) + MilliSeconds(1), &TraceThroughput, flowmon.Install(senderApp.Get(i)->GetNode()), cca[i]);
+    }
+    
+    
+    
+    
     Simulator::Stop(stopTime + TimeStep(1));
     Simulator::Run();
     Simulator::Destroy();
