@@ -9,78 +9,71 @@
 #include <iostream>
 #include <fstream>
 
+
 using namespace ns3;
-using namespace std;
 
 
 static void
-CwndTracer(Ptr<OutputStreamWrapper> stream, string cca,  uint32_t oldval, uint32_t newval)
+CwndTracer(Ptr<OutputStreamWrapper> stream, std::string cca,  uint32_t oldval, uint32_t newval)
 {
     *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval / 1448.0 << std::endl;
-    cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<endl;
+    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
 }
 
 static void
-RTTTracer(Ptr<OutputStreamWrapper> stream, string cca,  Time oldval, Time newval)
+RTTTracer(Ptr<OutputStreamWrapper> stream, std::string cca,  Time oldval, Time newval)
 {
     *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval.GetMilliSeconds()  << std::endl;
-    cout << Simulator::Now().GetSeconds() << "  |  " << newval.GetMilliSeconds() <<  " | "<< cca <<endl;
+    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval.GetMilliSeconds() <<  " | "<< cca << std::endl;
 }
-
-uint32_t prevBytes = 0;
-Time prevTime = Seconds(0);
 
 static void
-TraceThroughput(Ptr<FlowMonitor> monitor,  string cca)
+TraceThroughput(Ptr<FlowMonitor> monitor, Ptr<OutputStreamWrapper> stream, uint32_t nodeID, uint32_t prevBytes, Time prevTime ) 
 {
     FlowMonitor::FlowStatsContainer stats = monitor->GetFlowStats();
-    auto itr = stats.begin();
-    Time curTime = Now();
-    std::ofstream thr( cca + "-throughput.dat", std::ios::out | std::ios::app);
-    thr << curTime << ", "
-        << 8 * (itr->second.txBytes - prevBytes) /
-               (1000 * 1000 * (curTime.GetSeconds() - prevTime.GetSeconds()))
+    FlowMonitor::FlowStats statsNode = stats[nodeID];
+    std::cout << stats.size() << std::endl;
+    *stream->GetStream() << Simulator::Now().GetSeconds() << ", "
+        << 8 * (statsNode.txBytes - prevBytes) /
+               (1000 * 1000 * (Simulator::Now().GetSeconds() - prevTime.GetSeconds()))
         << std::endl;
-    cout << curTime << ", "
-        << 8 * (itr->second.txBytes - prevBytes) /
-               (1000 * 1000 * (curTime.GetSeconds() - prevTime.GetSeconds()))
-        << std::endl;
-    prevTime = curTime;
-    prevBytes = itr->second.txBytes;
-    Simulator::Schedule(Seconds(0.1), &TraceThroughput, monitor, cca);
+    //std::cout << Simulator::Now().GetSeconds() << ", " << 8 * (statsNode.txBytes - prevBytes[nodeID]) / (1000 * 1000 * (Simulator::Now().GetSeconds() - prevTime[nodeID].GetSeconds())) << std::endl;
+    //std::cout << "  prev bytes "<<prevBytes << "   prev time" << prevTime.GetSeconds() <<  " node id " << nodeID << std::endl;
+    Simulator::Schedule(Seconds(0.1), &TraceThroughput, monitor, stream,  nodeID, statsNode.txBytes, Simulator::Now());
 }
 
 
 
 void
-TraceCwnd(uint32_t nodeId, string caa)
+TraceCwnd(uint32_t nodeId, std::string cca)
 {
     AsciiTraceHelper ascii;
-    Ptr<OutputStreamWrapper> stream = ascii.CreateFileStream(caa + "-cwnd.dat");
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeId) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/CongestionWindow", 
-                                  MakeBoundCallback(&CwndTracer, stream, caa));
-}
-void
-TraceRTT(uint32_t nodeId, string caa)
-{
-    AsciiTraceHelper ascii;
-    Ptr<OutputStreamWrapper> stream = ascii.CreateFileStream(caa + "-rtt.dat");
-    Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeId) + 
-                                  "/$ns3::TcpL4Protocol/SocketList/0/RTT", 
-                                  MakeBoundCallback(&RTTTracer, stream, caa));
+                                  MakeBoundCallback(&CwndTracer, ascii.CreateFileStream(cca + std::to_string(nodeId) + + "-cwnd.dat"), cca));
 }
 
+void
+TraceRTT(uint32_t nodeId, std::string cca)
+{
+    AsciiTraceHelper ascii;
+    Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeId) + 
+                                  "/$ns3::TcpL4Protocol/SocketList/0/RTT", 
+                                  MakeBoundCallback(&RTTTracer, ascii.CreateFileStream(cca + std::to_string(nodeId) + + "-rtt.dat"), cca));
+}
+
+std::vector<std::string> cca = { "TcpBbr",  "TcpBbr"};
 
 int
 main(int argc, char* argv[])
 {
-    std::string cca[] = { "TcpBbr" };
+    // for some reason the first node is ignored????????????????????????
+
     //, "TcpVegas"
     int PORT = 50001;
-    Time stopTime = Seconds(1);
+    Time stopTime = Seconds(10);
     uint packetSize = 1448;
-    int Nodes = sizeof(cca) / sizeof(cca[0]);
+    
     Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(4194304));
     Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(6291456));
     Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(10));
@@ -96,20 +89,20 @@ main(int argc, char* argv[])
     
     
     NodeContainer senders, receivers, routers;
-    senders.Create(Nodes);
-    receivers.Create(Nodes);
+    senders.Create(cca.size());
+    receivers.Create(cca.size());
     routers.Create(2);
 
 
     PointToPointHelper botLink, p2pLink;
     std::ostringstream packetSizeValuebotLink;
-    packetSizeValuebotLink << (100000 * 5 / packetSize) << "p";
+    packetSizeValuebotLink << ((100000 * 5 / packetSize) * 1) << "p";
     botLink.SetDeviceAttribute("DataRate", StringValue("100Mbps"));
     botLink.SetChannelAttribute("Delay", StringValue("5ms"));
     botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(packetSizeValuebotLink.str())));
 
     std::ostringstream packetSizeValuep2pLink;
-    packetSizeValuep2pLink << (1000000 * 10 / packetSize) << "p";
+    packetSizeValuep2pLink << ((1000000 * 10 / packetSize ) * 1) << "p";
     p2pLink.SetDeviceAttribute("DataRate", StringValue("1000Mbps"));
     p2pLink.SetChannelAttribute("Delay", StringValue("10ms"));
     botLink.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(packetSizeValuep2pLink.str())));
@@ -117,7 +110,7 @@ main(int argc, char* argv[])
     NetDeviceContainer routerDevices = botLink.Install(routers);
     NetDeviceContainer senderDevices, receiverDevices, leftRouterDevices, rightRouterDevices;
     
-    for(int i = 0; i < Nodes; ++i) {
+    for(uint32_t i = 0; i < senders.GetN(); i++) {
 		NetDeviceContainer cleft = p2pLink.Install(routers.Get(0), senders.Get(i));
 		leftRouterDevices.Add(cleft.Get(0));
 		senderDevices.Add(cleft.Get(1));
@@ -134,11 +127,10 @@ main(int argc, char* argv[])
     internet.Install(receivers);
     internet.Install(routers);
 
-
     //("ns3::TcpL4Protocol::SocketType", StringValue("ns3::TcpBbr"));
 
     // sets the congestion control algorithm for each node to the corresponding value in the array 
-    for (int i = 0; i < Nodes; i++) {
+    for (uint32_t i = 0; i < senders.GetN(); i++) {
         Config::Set("/NodeList/" + std::to_string(i) + "/$ns3::TcpL4Protocol/SocketType", TypeIdValue(TypeId::LookupByName("ns3::" + cca[i])));
     }
 
@@ -158,7 +150,7 @@ main(int argc, char* argv[])
     Ipv4InterfaceContainer routerIFC, senderIFCs, receiverIFCs, leftRouterIFCs, rightRouterIFCs;
     routerIFC = routerIP.Assign(routerDevices); 
 
-    for(int i = 0; i < Nodes; ++i) {
+    for(uint32_t i = 0; i < senders.GetN(); i++) {
 		NetDeviceContainer senderDevice;
 		senderDevice.Add(senderDevices.Get(i));
 		senderDevice.Add(leftRouterDevices.Get(i));
@@ -166,7 +158,6 @@ main(int argc, char* argv[])
         Ipv4InterfaceContainer senderIFC = senderIP.Assign(senderDevice);
 		senderIFCs.Add(senderIFC.Get(0));
 		leftRouterIFCs.Add(senderIFC.Get(1));
-		
         senderIP.NewNetwork();
 
 		NetDeviceContainer receiverDevice;
@@ -178,6 +169,7 @@ main(int argc, char* argv[])
 		rightRouterIFCs.Add(receiverIFC.Get(1));
 		receiverIP.NewNetwork();
 	}
+
     Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
     ApplicationContainer senderApp, receiverApp;
@@ -190,28 +182,44 @@ main(int argc, char* argv[])
 
     }
 
-    senderApp.Start(Seconds(0.0));
-
+    senderApp.Start(Seconds(0.1));
     senderApp.Stop(stopTime);
 
     // Create receiver applications on each receiver node
-    for (uint32_t i = 0; i < receivers.GetN(); i++) {
+    for (uint32_t i = 0; i < senders.GetN(); i++) {
         PacketSinkHelper sink("ns3::TcpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), PORT));
         receiverApp.Add(sink.Install(receivers.Get(i)));
     }
-    receiverApp.Start(Seconds(0.0));
+    receiverApp.Start(Seconds(0.1));
     receiverApp.Stop(stopTime);
+
+
+    AsciiTraceHelper ascii2;
     
-    for (int i = 0; i < Nodes; i++) {
-        FlowMonitorHelper flowmon;
-        Simulator::Schedule(Seconds(0.1) + MilliSeconds(1), &TraceThroughput, flowmon.Install(senderApp.Get(i)->GetNode()), cca[i]);
+    FlowMonitorHelper flowmonHelper;
+    
+    for (uint32_t i = 0; i < senders.GetN(); i++) {  
+        //std::cout << "i = " << i << std::endl;
+        Ptr<FlowMonitor> flowMonitor = flowmonHelper.Install(senders.Get(i)); 
+        Simulator::Schedule(Seconds(0.1) + MilliSeconds(1) , &TraceThroughput, flowMonitor, ascii2.CreateFileStream(cca[i] + std::to_string(i) + "-throughtput.dat"), i+1, 0, Seconds(0));
     }
     
+    // Flow monitor
+    Ptr<FlowMonitor> flowMonitor;
+    FlowMonitorHelper flowHelper;
+    flowMonitor = flowHelper.InstallAll();
     
-    
-    
+
+
     Simulator::Stop(stopTime + TimeStep(1));
     Simulator::Run();
+
+
+
+    flowMonitor->SerializeToXmlFile("NameOfFile.xml", true, true);
+
+
+
     Simulator::Destroy();
 
     exit(0);
