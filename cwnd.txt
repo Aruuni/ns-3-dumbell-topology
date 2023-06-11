@@ -1,0 +1,8 @@
+set terminal pngcairo enhanced color lw 1.5 font 'Times Roman'
+set xrange [0:100]
+set yrange [0:2000]
+set output "Cubic v BBR - cwnd.png"
+set xlabel "Time (sec)"
+set ylabel "Cwnd (packets)"
+set key right top vertical
+plot "TcpCubic-cwnd.dat" title "Cubic-cwnd" with lines lw 0.7 lc 'blue', "TcpBbr-cwnd.dat" title "BBR-cwnd" with lines lw 0.7 lc 'green'
