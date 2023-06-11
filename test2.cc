@@ -12,68 +12,96 @@
 
 using namespace ns3;
 
+double throughPutReadingResolution = 0.1;
+static void
+TraceThroughput(
+    Ptr<FlowMonitor> monitor, 
+    Ptr<OutputStreamWrapper> stream, 
+    uint32_t flowID, 
+    uint32_t prevBytes, 
+    Time prevTime 
+    ) 
+{
+    FlowMonitor::FlowStatsContainer stats = monitor->GetFlowStats();
+    FlowMonitor::FlowStats statsNode = stats[flowID];
+    *stream->GetStream() 
+        << Simulator::Now().GetSeconds() 
+        << ", "
+        << 8 * (statsNode.txBytes - prevBytes) / (1000000 * (Simulator::Now().GetSeconds() - prevTime.GetSeconds()))
+    << std::endl;
+    Simulator::Schedule(Seconds(throughPutReadingResolution), &TraceThroughput, monitor, stream,  nodeID, statsNode.txBytes, Simulator::Now());
+}
 
 static void
-CwndTracer(Ptr<OutputStreamWrapper> stream, std::string cca,  uint32_t oldval, uint32_t newval)
+TraceQueueSize(
+     //uint32_t nodeID, 
+     Ptr<QueueDisc> qd, 
+    ) 
+{
+
+    uint32_t qsize = qd->GetCurrentSize().GetValue();
+    std::cout << Simulator::Now().GetSeconds() << "  |  " << qsize / 1448.0 << std::endl;
+    Simulator::Schedule(Seconds(0.2), &TraceQueueSize, qd);
+}
+
+static void
+CwndTracer(
+    Ptr<OutputStreamWrapper> stream, 
+    std::string cca,  
+    uint32_t oldval, 
+    uint32_t newval
+    )
 {
     *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval / 1448.0 << std::endl;
     //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
 }
-
-static void
-RTTTracer(Ptr<OutputStreamWrapper> stream, std::string cca,  Time oldval, Time newval)
-{
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval.GetMilliSeconds()  << std::endl;
-    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval.GetMilliSeconds() <<  " | "<< cca << std::endl;
-}
-
-static void
-TraceThroughput(Ptr<FlowMonitor> monitor, Ptr<OutputStreamWrapper> stream, uint32_t nodeID, uint32_t prevBytes, Time prevTime ) 
-{
-    FlowMonitor::FlowStatsContainer stats = monitor->GetFlowStats();
-    FlowMonitor::FlowStats statsNode = stats[nodeID];
-    std::cout << stats.size() << std::endl;
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", "
-        << 8 * (statsNode.txBytes - prevBytes) /
-               (1000 * 1000 * (Simulator::Now().GetSeconds() - prevTime.GetSeconds()))
-        << std::endl;
-    //std::cout << Simulator::Now().GetSeconds() << ", " << 8 * (statsNode.txBytes - prevBytes[nodeID]) / (1000 * 1000 * (Simulator::Now().GetSeconds() - prevTime[nodeID].GetSeconds())) << std::endl;
-    //std::cout << "  prev bytes "<<prevBytes << "   prev time" << prevTime.GetSeconds() <<  " node id " << nodeID << std::endl;
-    Simulator::Schedule(Seconds(0.1), &TraceThroughput, monitor, stream,  nodeID, statsNode.txBytes, Simulator::Now());
-}
-
-
-
 void
-TraceCwnd(uint32_t nodeId, std::string cca)
+TraceCwnd(
+    uint32_t nodeId, 
+    std::string cca
+    )
 {
     AsciiTraceHelper ascii;
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeId) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/CongestionWindow", 
-                                  MakeBoundCallback(&CwndTracer, ascii.CreateFileStream(cca + std::to_string(nodeId) + + "-cwnd.dat"), cca));
+                                  MakeBoundCallback(&CwndTracer, ascii.CreateFileStream(cca + std::to_string(nodeId) + "-cwnd.dat"), cca));
 }
 
+static void
+RTTTracer(
+    Ptr<OutputStreamWrapper> stream,  
+    Time oldval, 
+    Time newval
+    )
+{
+    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval.GetMilliSeconds()  << std::endl;
+    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval.GetMilliSeconds() <<  " | "<< cca << std::endl;
+}
 void
 TraceRTT(uint32_t nodeId, std::string cca)
 {
     AsciiTraceHelper ascii;
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeId) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/RTT", 
-                                  MakeBoundCallback(&RTTTracer, ascii.CreateFileStream(cca + std::to_string(nodeId) + + "-rtt.dat"), cca));
+                                  MakeBoundCallback(&RTTTracer, ascii.CreateFileStream(cca + std::to_string(nodeId) + "-rtt.dat")));
 }
 
-std::vector<std::string> cca = { "TcpBbr",  "TcpBbr"};
 
-int
-main(int argc, char* argv[])
+
+//simulation paramaters
+std::vector<std::string> cca = { "TcpCubic"};
+double startTime = 0.1;
+double startOffset = 0;
+int PORT = 50001;
+Time stopTime = Seconds(10);
+uint packetSize = 1448;
+
+
+
+int main(int argc, char* argv[])
 {
-    // for some reason the first node is ignored????????????????????????
-
     //, "TcpVegas"
-    int PORT = 50001;
-    Time stopTime = Seconds(10);
-    uint packetSize = 1448;
-    
+
     Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(4194304));
     Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(6291456));
     Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(10));
@@ -82,8 +110,7 @@ main(int argc, char* argv[])
     //Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(2));
     //Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(packetSize));
 
-    //Config::SetDefault("ns3::DropTailQueue<Packet>::MaxSize", QueueSizeValue(QueueSize("1p")));
-    //Config::SetDefault("ns3::FifoQueueDisc::MaxSize", QueueSizeValue(QueueSize("900p")));
+
     
     //Config::SetDefault("ns3::TcpL4Protocol::SocketType", StringValue("ns3::TcpBbr"));
     
@@ -95,18 +122,17 @@ main(int argc, char* argv[])
 
 
     PointToPointHelper botLink, p2pLink;
-    std::ostringstream packetSizeValuebotLink;
-    packetSizeValuebotLink << ((100000 * 5 / packetSize) * 1) << "p";
+
     botLink.SetDeviceAttribute("DataRate", StringValue("100Mbps"));
     botLink.SetChannelAttribute("Delay", StringValue("5ms"));
-    botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(packetSizeValuebotLink.str())));
+    botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string((100000 * 5 / packetSize) * 55) + "p")));
 
-    std::ostringstream packetSizeValuep2pLink;
-    packetSizeValuep2pLink << ((1000000 * 10 / packetSize ) * 1) << "p";
     p2pLink.SetDeviceAttribute("DataRate", StringValue("1000Mbps"));
     p2pLink.SetChannelAttribute("Delay", StringValue("10ms"));
-    botLink.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(packetSizeValuep2pLink.str())));
+    p2pLink.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string((1000000 * 10 / packetSize) * 55) + "p")));
     
+
+
     NetDeviceContainer routerDevices = botLink.Install(routers);
     NetDeviceContainer senderDevices, receiverDevices, leftRouterDevices, rightRouterDevices;
     
@@ -177,12 +203,10 @@ main(int argc, char* argv[])
         BulkSendHelper sender("ns3::TcpSocketFactory", InetSocketAddress(receiverIFCs.GetAddress(i), PORT));
         sender.SetAttribute("MaxBytes", UintegerValue(0)); // Unlimited data
         senderApp.Add(sender.Install(senders.Get(i)));
-        Simulator::Schedule(Seconds(0.1) + MilliSeconds(1), &TraceCwnd,  senders.Get(i)->GetId(), cca[i]);
-        Simulator::Schedule(Seconds(0.1) + MilliSeconds(1), &TraceRTT,  senders.Get(i)->GetId(), cca[i]);
-
+        senderApp.Get(i)->SetStartTime(Seconds(startTime +  ( startOffset * i))); 
+        Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TraceCwnd,  senders.Get(i)->GetId(), cca[i]);
+        Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TraceRTT,  senders.Get(i)->GetId(), cca[i]);
     }
-
-    senderApp.Start(Seconds(0.1));
     senderApp.Stop(stopTime);
 
     // Create receiver applications on each receiver node
@@ -190,7 +214,7 @@ main(int argc, char* argv[])
         PacketSinkHelper sink("ns3::TcpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), PORT));
         receiverApp.Add(sink.Install(receivers.Get(i)));
     }
-    receiverApp.Start(Seconds(0.1));
+    receiverApp.Start(Seconds(0));
     receiverApp.Stop(stopTime);
 
 
@@ -216,7 +240,7 @@ main(int argc, char* argv[])
 
 
 
-    flowMonitor->SerializeToXmlFile("NameOfFile.xml", true, true);
+    //flowMonitor->SerializeToXmlFile("NameOfFile.xml", true, true);
 
 
 
