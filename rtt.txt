@@ -1,8 +1,0 @@
-set terminal pngcairo enhanced color lw 1.5 font 'Times Roman'
-set xrange [0:100]
-set yrange [0:500]
-set output "BBR v NewReno - rtt.png"
-set xlabel "Time (sec)"
-set ylabel "RTT (ms)"
-set key right top vertical
-plot "TcpBbr-rtt.dat" title "BBR-RTT" with lines lw 0.5 lc 'blue', "TcpNewReno-rtt.dat" title "NewReno-RTT" with lines lw 0.5 lc 'green', "TcpVegas-rtt.dat" title "Vegas-RTT" with lines lw 0.5 lc 'red'

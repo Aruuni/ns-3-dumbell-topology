@@ -6,14 +6,30 @@
 #include "ns3/network-module.h"
 #include "ns3/point-to-point-module.h"
 #include "ns3/traffic-control-module.h"
-//#include <gnuplot.h>
+
 #include <iostream>
 #include <fstream>
+#include <cstdio>
 
 
 using namespace ns3;
 
+
+//simulation paramaters
+std::vector<std::string> cca = { "TcpCubic", "TcpCubic"};
+std::vector<std::string> cwndPlotFilesnames = { };
+std::vector<std::string> rttPlotFilesnames = { };
+std::vector<std::string> throughputPlotFilesnames = { };
+double startTime = 0.1;
+double startOffset = 0;
+int PORT = 50001;
+Time stopTime = Seconds(60);
+uint packetSize = 1448;
+std::vector<std::string> colors = { "blue", "green", "red", "orange", "purple", "brown", "black", "yellow", "cyan", "magenta", "gray" };
+
 double throughPutReadingResolution = 0.1;
+
+
 static void
 TraceThroughput(
     Ptr<FlowMonitor> monitor, 
@@ -33,17 +49,17 @@ TraceThroughput(
     Simulator::Schedule(Seconds(throughPutReadingResolution), &TraceThroughput, monitor, stream,  flowID, statsNode.txBytes, Simulator::Now());
 }
 
-// static void
-// TraceQueueSize(
-//      //uint32_t nodeID, 
-//      Ptr<QueueDisc> qd, 
-//     ) 
-// {
+static void
+TraceQueueSize(
+     Ptr<OutputStreamWrapper> stream,
+     Ptr<QueueDisc> qd, 
+    ) 
+{
 
-//     uint32_t qsize = qd->GetCurrentSize().GetValue();
-//     std::cout << Simulator::Now().GetSeconds() << "  |  " << qsize / 1448.0 << std::endl;
-//     Simulator::Schedule(Seconds(0.2), &TraceQueueSize, qd);
-// }
+    uint32_t qsize = qd->GetCurrentSize().GetValue();
+    std::cout << Simulator::Now().GetSeconds() << "  |  " << qsize / 1448.0 << std::endl;
+    Simulator::Schedule(Seconds(0.2), &TraceQueueSize, qd);
+}
 
 static void
 CwndTracer(
@@ -54,7 +70,7 @@ CwndTracer(
     )
 {
     *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval / 1448.0 << std::endl;
-    std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
+    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
 }
 void
 TraceCwnd(
@@ -80,56 +96,58 @@ RTTTracer(
     //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval.GetMilliSeconds() <<  " | "<< cca << std::endl;
 }
 void
-TraceRTT(uint32_t nodeId, std::string cca)
+TraceRTT(
+    uint32_t nodeId, 
+    std::string cca
+    )
 {
     AsciiTraceHelper ascii;
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeId) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/RTT", 
                                   MakeBoundCallback(&RTTTracer, ascii.CreateFileStream(cca + std::to_string(nodeId) + "-rtt.dat")));
-    rttPlotFilesnames.push_back(cca + std::to_string(nodeId) + "-cwnd");
+    rttPlotFilesnames.push_back(cca + std::to_string(nodeId) + "-rtt");
 
 }
 
-
-
-//simulation paramaters
-std::vector<std::string> cca = { "TcpCubic" };
-std::vector<std::string> cwndPlotFilesnames = { };
-std::vector<std::string> rttPlotFilesnames = { };
-std::vector<std::string> throughputPlotFilesnames = { };
-double startTime = 0.1;
-double startOffset = 0;
-int PORT = 50001;
-Time stopTime = Seconds(10);
-uint packetSize = 1448;
-std::vector<std::string> colors = { "blue", "green", "red", "orange", "purple" };
 void 
-generateCWNDPlot(std::vector<std::string> fileNames, std::string cca)
+generatePlot( 
+    std::vector<std::string> plotFilesnames,
+    std::string plotTitle,
+    std::string plotYLabel
+)
 {
-    Gnuplot plot(fileName);
-    plot.SetTitle("Throughput vs Time");
-    plot.SetTerminal("png");
-    plot.SetLegend("Time (s)", "Throughput (Mbps)");
-    plot.AppendExtra("set xrange [0:" + std::to_string(stopTime.GetSeconds())+ "]");
-    plot.AppendExtra("set yrange [0:2000]");
-    //plot.AppendExtra("set grid");
-    //plot.AppendExtra("set style data lines");
-    plot.AppendExtra("set key right top vertical");
-    plot.AppendExtra("set xlabel 'Time (s)'");
-    plot.AppendExtra("set ylabel 'Congestion Window (Packets/s)'");
-    //plot.AppendExtra("set xtics 0,1,10");
-    //plot.AppendExtra("set ytics 0,100,1000");
-    //plot.AppendExtra("set term png size 1024,768");
-    plot.AppendExtra("set output '" + fileName + ".png'");
-    for (int i = 0; i < fileNames.size(); i++)
-    {
-        plot.AppendExtra("plot '" + fileNames[i] + ".dat' title '" + cca[i] + "' with lines lw 0.7 lc " + colors[i]);
+    FILE *gnuplotPipe = popen("gnuplot -persist", "w");
+    if (gnuplotPipe) {
+        fprintf(gnuplotPipe, "set terminal pngcairo enhanced color lw 1.5 font 'Times Roman'\n");
+        fprintf(gnuplotPipe, "set autoscale x\n");
+        fprintf(gnuplotPipe, "set autoscale y\n");
+        fprintf(gnuplotPipe, "set output \"%s.png\"\n", plotTitle.c_str());
+        fprintf(gnuplotPipe, "set xlabel \"Time (sec)\"\n");
+        fprintf(gnuplotPipe, "set ylabel \"%s\"\n", plotYLabel.c_str());
+        fprintf(gnuplotPipe, "set key right top vertical\n");
+        std::string plotCommand = "plot ";
+        for (uint32_t i = 0; i < plotFilesnames.size(); i++) {
+            plotCommand += "\"" + plotFilesnames[i] + ".dat\" title \"" + cca[i] +  std::to_string(i) + "\" with lines lw 0.7 lc '" + colors[i] + "'";
+            if (i != plotFilesnames.size() - 1) {
+                plotCommand += ", ";
+            }
+        }
+        
+        fprintf(gnuplotPipe, "%s", plotCommand.c_str());
+        fflush(gnuplotPipe);
+        std::cout << "Gnuplot cwnd script executed successfully." << std::endl;
+    } else {
+        std::cerr << "Error opening gnuplot pipe." << std::endl;
     }
-    //plot.AppendExtra("plot '" + fileName + ".dat' using 1:2 title '" + caa + "' with lines");
-    plot.GenerateOutput();
+    pclose(gnuplotPipe);
 }
 
-int main(int argc, char* argv[])
+
+int 
+main(
+    int argc, 
+    char* argv[]
+    )
 {
     //, "TcpVegas"
 
@@ -250,7 +268,7 @@ int main(int argc, char* argv[])
         //std::cout << "i = " << i << std::endl;
         Ptr<FlowMonitor> flowMonitor = flowmonHelper.Install(senders.Get(i)); 
         Simulator::Schedule(Seconds(0.1) + MilliSeconds(1) , &TraceThroughput, flowMonitor, ascii2.CreateFileStream(cca[i] + std::to_string(i) + "-throughtput.dat"), i+1, 0, Seconds(0));
-        throughputPlotFilesnames.push_back(cca[i] + std::to_string(i) + "-throughtput.dat");
+        throughputPlotFilesnames.push_back(cca[i] + std::to_string(i) + "-throughtput");
     }
     
     // Flow monitor
@@ -263,13 +281,19 @@ int main(int argc, char* argv[])
     Simulator::Stop(stopTime + TimeStep(1));
     Simulator::Run();
 
-
-
     //flowMonitor->SerializeToXmlFile("NameOfFile.xml", true, true);
 
-
-
+    generatePlot(cwndPlotFilesnames, "Congestion Window", "Cwnd (packets)");
+    generatePlot(rttPlotFilesnames, "Round Trip Time", "RTT (ms)");
+    generatePlot(throughputPlotFilesnames, "Throughput", "Throughput (Mbps)");
+    
     Simulator::Destroy();
 
+    //cleans up the .dat files, uncomment if you want to keep them
+    for (uint32_t i = 0; i < cca.size(); i++){
+        remove((cwndPlotFilesnames[i] + ".dat").c_str());
+        remove((rttPlotFilesnames[i] + ".dat").c_str());
+        remove((throughputPlotFilesnames[i] + ".dat").c_str());
+    }
     exit(0);
 }
