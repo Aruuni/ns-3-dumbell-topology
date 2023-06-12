@@ -6,6 +6,7 @@
 #include "ns3/network-module.h"
 #include "ns3/point-to-point-module.h"
 #include "ns3/traffic-control-module.h"
+//#include <gnuplot.h>
 #include <iostream>
 #include <fstream>
 
@@ -29,20 +30,20 @@ TraceThroughput(
         << ", "
         << 8 * (statsNode.txBytes - prevBytes) / (1000000 * (Simulator::Now().GetSeconds() - prevTime.GetSeconds()))
     << std::endl;
-    Simulator::Schedule(Seconds(throughPutReadingResolution), &TraceThroughput, monitor, stream,  nodeID, statsNode.txBytes, Simulator::Now());
+    Simulator::Schedule(Seconds(throughPutReadingResolution), &TraceThroughput, monitor, stream,  flowID, statsNode.txBytes, Simulator::Now());
 }
 
-static void
-TraceQueueSize(
-     //uint32_t nodeID, 
-     Ptr<QueueDisc> qd, 
-    ) 
-{
+// static void
+// TraceQueueSize(
+//      //uint32_t nodeID, 
+//      Ptr<QueueDisc> qd, 
+//     ) 
+// {
 
-    uint32_t qsize = qd->GetCurrentSize().GetValue();
-    std::cout << Simulator::Now().GetSeconds() << "  |  " << qsize / 1448.0 << std::endl;
-    Simulator::Schedule(Seconds(0.2), &TraceQueueSize, qd);
-}
+//     uint32_t qsize = qd->GetCurrentSize().GetValue();
+//     std::cout << Simulator::Now().GetSeconds() << "  |  " << qsize / 1448.0 << std::endl;
+//     Simulator::Schedule(Seconds(0.2), &TraceQueueSize, qd);
+// }
 
 static void
 CwndTracer(
@@ -53,7 +54,7 @@ CwndTracer(
     )
 {
     *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval / 1448.0 << std::endl;
-    //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
+    std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
 }
 void
 TraceCwnd(
@@ -65,6 +66,7 @@ TraceCwnd(
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeId) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/CongestionWindow", 
                                   MakeBoundCallback(&CwndTracer, ascii.CreateFileStream(cca + std::to_string(nodeId) + "-cwnd.dat"), cca));
+    cwndPlotFilesnames.push_back(cca + std::to_string(nodeId) + "-cwnd");
 }
 
 static void
@@ -84,19 +86,48 @@ TraceRTT(uint32_t nodeId, std::string cca)
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeId) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/RTT", 
                                   MakeBoundCallback(&RTTTracer, ascii.CreateFileStream(cca + std::to_string(nodeId) + "-rtt.dat")));
+    rttPlotFilesnames.push_back(cca + std::to_string(nodeId) + "-cwnd");
+
 }
 
 
 
 //simulation paramaters
-std::vector<std::string> cca = { "TcpCubic"};
+std::vector<std::string> cca = { "TcpCubic" };
+std::vector<std::string> cwndPlotFilesnames = { };
+std::vector<std::string> rttPlotFilesnames = { };
+std::vector<std::string> throughputPlotFilesnames = { };
 double startTime = 0.1;
 double startOffset = 0;
 int PORT = 50001;
 Time stopTime = Seconds(10);
 uint packetSize = 1448;
-
-
+std::vector<std::string> colors = { "blue", "green", "red", "orange", "purple" };
+void 
+generateCWNDPlot(std::vector<std::string> fileNames, std::string cca)
+{
+    Gnuplot plot(fileName);
+    plot.SetTitle("Throughput vs Time");
+    plot.SetTerminal("png");
+    plot.SetLegend("Time (s)", "Throughput (Mbps)");
+    plot.AppendExtra("set xrange [0:" + std::to_string(stopTime.GetSeconds())+ "]");
+    plot.AppendExtra("set yrange [0:2000]");
+    //plot.AppendExtra("set grid");
+    //plot.AppendExtra("set style data lines");
+    plot.AppendExtra("set key right top vertical");
+    plot.AppendExtra("set xlabel 'Time (s)'");
+    plot.AppendExtra("set ylabel 'Congestion Window (Packets/s)'");
+    //plot.AppendExtra("set xtics 0,1,10");
+    //plot.AppendExtra("set ytics 0,100,1000");
+    //plot.AppendExtra("set term png size 1024,768");
+    plot.AppendExtra("set output '" + fileName + ".png'");
+    for (int i = 0; i < fileNames.size(); i++)
+    {
+        plot.AppendExtra("plot '" + fileNames[i] + ".dat' title '" + cca[i] + "' with lines lw 0.7 lc " + colors[i]);
+    }
+    //plot.AppendExtra("plot '" + fileName + ".dat' using 1:2 title '" + caa + "' with lines");
+    plot.GenerateOutput();
+}
 
 int main(int argc, char* argv[])
 {
@@ -104,17 +135,9 @@ int main(int argc, char* argv[])
 
     Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(4194304));
     Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(6291456));
-    Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(10));
-    
-    
+    Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(10)); 
     //Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(2));
     //Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(packetSize));
-
-
-    
-    //Config::SetDefault("ns3::TcpL4Protocol::SocketType", StringValue("ns3::TcpBbr"));
-    
-    
     NodeContainer senders, receivers, routers;
     senders.Create(cca.size());
     receivers.Create(cca.size());
@@ -125,11 +148,11 @@ int main(int argc, char* argv[])
 
     botLink.SetDeviceAttribute("DataRate", StringValue("100Mbps"));
     botLink.SetChannelAttribute("Delay", StringValue("5ms"));
-    botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string((100000 * 5 / packetSize) * 55) + "p")));
+    botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string((100000 * 5 / packetSize) * 1) + "p")));
 
     p2pLink.SetDeviceAttribute("DataRate", StringValue("1000Mbps"));
     p2pLink.SetChannelAttribute("Delay", StringValue("10ms"));
-    p2pLink.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string((1000000 * 10 / packetSize) * 55) + "p")));
+    p2pLink.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string((1000000 * 10 / packetSize) * 1) + "p")));
     
 
 
@@ -205,6 +228,7 @@ int main(int argc, char* argv[])
         senderApp.Add(sender.Install(senders.Get(i)));
         senderApp.Get(i)->SetStartTime(Seconds(startTime +  ( startOffset * i))); 
         Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TraceCwnd,  senders.Get(i)->GetId(), cca[i]);
+
         Simulator::Schedule(Seconds(startTime +  ( startOffset * i)) + MilliSeconds(1), &TraceRTT,  senders.Get(i)->GetId(), cca[i]);
     }
     senderApp.Stop(stopTime);
@@ -226,6 +250,7 @@ int main(int argc, char* argv[])
         //std::cout << "i = " << i << std::endl;
         Ptr<FlowMonitor> flowMonitor = flowmonHelper.Install(senders.Get(i)); 
         Simulator::Schedule(Seconds(0.1) + MilliSeconds(1) , &TraceThroughput, flowMonitor, ascii2.CreateFileStream(cca[i] + std::to_string(i) + "-throughtput.dat"), i+1, 0, Seconds(0));
+        throughputPlotFilesnames.push_back(cca[i] + std::to_string(i) + "-throughtput.dat");
     }
     
     // Flow monitor
