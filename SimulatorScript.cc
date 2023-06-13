@@ -16,19 +16,19 @@ using namespace ns3;
 
 
 //simulation paramaters
-std::vector<std::string> cca = { "TcpCubic", "TcpCubic"};
+std::vector<std::string> cca = { "TcpCubic"};
 std::vector<std::string> cwndPlotFilesnames = { };
 std::vector<std::string> rttPlotFilesnames = { };
 std::vector<std::string> throughputPlotFilesnames = { };
+
 double startTime = 0.1;
 double startOffset = 0;
 int PORT = 50001;
-Time stopTime = Seconds(60);
+Time stopTime = Seconds(100);
 uint packetSize = 1448;
 std::vector<std::string> colors = { "blue", "green", "red", "orange", "purple", "brown", "black", "yellow", "cyan", "magenta", "gray" };
-
-double throughPutReadingResolution = 0.1;
-
+double throughPutReadingResolution = 0.05;
+AsciiTraceHelper ascii;
 
 static void
 TraceThroughput(
@@ -49,17 +49,7 @@ TraceThroughput(
     Simulator::Schedule(Seconds(throughPutReadingResolution), &TraceThroughput, monitor, stream,  flowID, statsNode.txBytes, Simulator::Now());
 }
 
-static void
-TraceQueueSize(
-     Ptr<OutputStreamWrapper> stream,
-     Ptr<QueueDisc> qd, 
-    ) 
-{
 
-    uint32_t qsize = qd->GetCurrentSize().GetValue();
-    std::cout << Simulator::Now().GetSeconds() << "  |  " << qsize / 1448.0 << std::endl;
-    Simulator::Schedule(Seconds(0.2), &TraceQueueSize, qd);
-}
 
 static void
 CwndTracer(
@@ -69,7 +59,7 @@ CwndTracer(
     uint32_t newval
     )
 {
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval / 1448.0 << std::endl;
+    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval / packetSize << std::endl;
     //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
 }
 void
@@ -78,14 +68,13 @@ TraceCwnd(
     std::string cca
     )
 {
-    AsciiTraceHelper ascii;
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeId) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/CongestionWindow", 
                                   MakeBoundCallback(&CwndTracer, ascii.CreateFileStream(cca + std::to_string(nodeId) + "-cwnd.dat"), cca));
     cwndPlotFilesnames.push_back(cca + std::to_string(nodeId) + "-cwnd");
 }
 
-static void
+void
 RTTTracer(
     Ptr<OutputStreamWrapper> stream,  
     Time oldval, 
@@ -101,12 +90,30 @@ TraceRTT(
     std::string cca
     )
 {
-    AsciiTraceHelper ascii;
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeId) + 
                                   "/$ns3::TcpL4Protocol/SocketList/0/RTT", 
                                   MakeBoundCallback(&RTTTracer, ascii.CreateFileStream(cca + std::to_string(nodeId) + "-rtt.dat")));
     rttPlotFilesnames.push_back(cca + std::to_string(nodeId) + "-rtt");
 
+}
+
+void 
+QueueSizeTracer(
+    Ptr<OutputStreamWrapper> stream,
+    uint32_t oldSize, 
+    uint32_t newSize
+    ) 
+{
+    //std::cout << "Queue size: " << newSize << std::endl;
+    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newSize << std::endl;
+}
+void
+QueueSizeTrace(
+    uint32_t nodeID,
+    uint32_t deviceID
+    )
+{
+    Config::ConnectWithoutContext("/NodeList/" + std::to_string(nodeID) + "/DeviceList/" + std::to_string(deviceID) + "/$ns3::PointToPointNetDevice/TxQueue/PacketsInQueue", MakeBoundCallback(&QueueSizeTracer, ascii.CreateFileStream("queueSize.dat")));
 }
 
 void 
@@ -120,7 +127,11 @@ generatePlot(
     if (gnuplotPipe) {
         fprintf(gnuplotPipe, "set terminal pngcairo enhanced color lw 1.5 font 'Times Roman'\n");
         fprintf(gnuplotPipe, "set autoscale x\n");
-        fprintf(gnuplotPipe, "set autoscale y\n");
+        //fprintf(gnuplotPipe, "set autoscale y\n");
+        if (plotTitle == "Congestion Window")
+            fprintf(gnuplotPipe, "set yrange [0:2000]\n");
+        else 
+            fprintf(gnuplotPipe, "set yrange [0:*]\n");
         fprintf(gnuplotPipe, "set output \"%s.png\"\n", plotTitle.c_str());
         fprintf(gnuplotPipe, "set xlabel \"Time (sec)\"\n");
         fprintf(gnuplotPipe, "set ylabel \"%s\"\n", plotYLabel.c_str());
@@ -135,7 +146,7 @@ generatePlot(
         
         fprintf(gnuplotPipe, "%s", plotCommand.c_str());
         fflush(gnuplotPipe);
-        std::cout << "Gnuplot cwnd script executed successfully." << std::endl;
+        std::cout << "Gnuplot" << plotTitle << " script executed successfully." << std::endl;
     } else {
         std::cerr << "Error opening gnuplot pipe." << std::endl;
     }
@@ -149,19 +160,17 @@ main(
     char* argv[]
     )
 {
-    //, "TcpVegas"
-
     Config::SetDefault("ns3::TcpSocket::SndBufSize", UintegerValue(4194304));
     Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(6291456));
     Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(10)); 
-    //Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(2));
-    //Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(packetSize));
+    Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(2));
+    
+    
     NodeContainer senders, receivers, routers;
     senders.Create(cca.size());
     receivers.Create(cca.size());
     routers.Create(2);
-
-
+    
     PointToPointHelper botLink, p2pLink;
 
     botLink.SetDeviceAttribute("DataRate", StringValue("100Mbps"));
@@ -171,8 +180,6 @@ main(
     p2pLink.SetDeviceAttribute("DataRate", StringValue("1000Mbps"));
     p2pLink.SetChannelAttribute("Delay", StringValue("10ms"));
     p2pLink.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string((1000000 * 10 / packetSize) * 1) + "p")));
-    
-
 
     NetDeviceContainer routerDevices = botLink.Install(routers);
     NetDeviceContainer senderDevices, receiverDevices, leftRouterDevices, rightRouterDevices;
@@ -189,12 +196,14 @@ main(
 		//cright.Get(0)->SetAttribute("ReceiveErrorModel", PointerValue(em));
 	}
     
+
+
+
     InternetStackHelper internet;
     internet.Install(senders);
     internet.Install(receivers);
     internet.Install(routers);
 
-    //("ns3::TcpL4Protocol::SocketType", StringValue("ns3::TcpBbr"));
 
     // sets the congestion control algorithm for each node to the corresponding value in the array 
     for (uint32_t i = 0; i < senders.GetN(); i++) {
@@ -208,7 +217,9 @@ main(
     tch.Install(receiverDevices);
     tch.Install(leftRouterDevices);
     tch.Install(rightRouterDevices);
-
+    
+    // node 6 device 0 has the queue where the bottleneck will occur  
+    QueueSizeTrace(senders.GetN()*2,0);
 
 	Ipv4AddressHelper routerIP = Ipv4AddressHelper("10.3.0.0", "255.255.255.0");
 	Ipv4AddressHelper senderIP = Ipv4AddressHelper("10.1.0.0", "255.255.255.0");
@@ -216,6 +227,7 @@ main(
 
     Ipv4InterfaceContainer routerIFC, senderIFCs, receiverIFCs, leftRouterIFCs, rightRouterIFCs;
     routerIFC = routerIP.Assign(routerDevices); 
+
 
     for(uint32_t i = 0; i < senders.GetN(); i++) {
 		NetDeviceContainer senderDevice;
@@ -239,6 +251,8 @@ main(
 
     Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
+
+    // Create sender applications on each sender node
     ApplicationContainer senderApp, receiverApp;
     for (uint32_t i = 0; i < senders.GetN(); i++) {
         BulkSendHelper sender("ns3::TcpSocketFactory", InetSocketAddress(receiverIFCs.GetAddress(i), PORT));
@@ -256,18 +270,14 @@ main(
         PacketSinkHelper sink("ns3::TcpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), PORT));
         receiverApp.Add(sink.Install(receivers.Get(i)));
     }
-    receiverApp.Start(Seconds(0));
+    receiverApp.Start(Seconds(0.1));
     receiverApp.Stop(stopTime);
 
 
-    AsciiTraceHelper ascii2;
-    
     FlowMonitorHelper flowmonHelper;
-    
     for (uint32_t i = 0; i < senders.GetN(); i++) {  
-        //std::cout << "i = " << i << std::endl;
         Ptr<FlowMonitor> flowMonitor = flowmonHelper.Install(senders.Get(i)); 
-        Simulator::Schedule(Seconds(0.1) + MilliSeconds(1) , &TraceThroughput, flowMonitor, ascii2.CreateFileStream(cca[i] + std::to_string(i) + "-throughtput.dat"), i+1, 0, Seconds(0));
+        Simulator::Schedule(Seconds(0.1) + MilliSeconds(1) , &TraceThroughput, flowMonitor, ascii.CreateFileStream(cca[i] + std::to_string(i) + "-throughtput.dat"), i+1, 0, Seconds(0));
         throughputPlotFilesnames.push_back(cca[i] + std::to_string(i) + "-throughtput");
     }
     
@@ -286,14 +296,12 @@ main(
     generatePlot(cwndPlotFilesnames, "Congestion Window", "Cwnd (packets)");
     generatePlot(rttPlotFilesnames, "Round Trip Time", "RTT (ms)");
     generatePlot(throughputPlotFilesnames, "Throughput", "Throughput (Mbps)");
-    
+    std::vector<std::string>t;
+    t.push_back("queueSize");
+    generatePlot(t, "Queue Size", "Queue Size (packets)");
     Simulator::Destroy();
 
     //cleans up the .dat files, uncomment if you want to keep them
-    for (uint32_t i = 0; i < cca.size(); i++){
-        remove((cwndPlotFilesnames[i] + ".dat").c_str());
-        remove((rttPlotFilesnames[i] + ".dat").c_str());
-        remove((throughputPlotFilesnames[i] + ".dat").c_str());
-    }
+    for (uint32_t i = 0; i < cca.size(); i++){remove((cwndPlotFilesnames[i] + ".dat").c_str());remove((rttPlotFilesnames[i] + ".dat").c_str());remove((throughputPlotFilesnames[i] + ".dat").c_str());}remove("queueSize.dat");
     exit(0);
 }
