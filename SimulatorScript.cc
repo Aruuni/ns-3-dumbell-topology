@@ -16,7 +16,8 @@ using namespace ns3;
 
 
 //simulation paramaters
-std::vector<std::string> cca = { "TcpCubic"};
+std::vector<std::string> cca = { "TcpCubic", "TcpCubic"};
+//, "TcpCubic"
 std::vector<std::string> cwndPlotFilesnames = { };
 std::vector<std::string> rttPlotFilesnames = { };
 std::vector<std::string> throughputPlotFilesnames = { };
@@ -29,6 +30,7 @@ uint packetSize = 1448;
 std::vector<std::string> colors = { "blue", "green", "red", "orange", "purple", "brown", "black", "yellow", "cyan", "magenta", "gray" };
 double throughPutReadingResolution = 0.05;
 AsciiTraceHelper ascii;
+uint32_t bdp_multiplier = 1;
 
 static void
 TraceThroughput(
@@ -175,11 +177,11 @@ main(
 
     botLink.SetDeviceAttribute("DataRate", StringValue("100Mbps"));
     botLink.SetChannelAttribute("Delay", StringValue("5ms"));
-    botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string((100000 * 5 / packetSize) * 1) + "p")));
+    botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string((100000 * 5 / packetSize) * bdp_multiplier) + "p")));
 
     p2pLink.SetDeviceAttribute("DataRate", StringValue("1000Mbps"));
     p2pLink.SetChannelAttribute("Delay", StringValue("10ms"));
-    p2pLink.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string((1000000 * 10 / packetSize) * 1) + "p")));
+    p2pLink.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string((1000000 * 10 / packetSize) * bdp_multiplier) + "p")));
 
     NetDeviceContainer routerDevices = botLink.Install(routers);
     NetDeviceContainer senderDevices, receiverDevices, leftRouterDevices, rightRouterDevices;
