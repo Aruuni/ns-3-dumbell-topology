@@ -16,14 +16,14 @@ using namespace ns3;
 
 
 //simulation paramaters
-std::vector<std::string> cca = { "TcpCubic", "TcpCubic"};
+std::vector<std::string> cca = { "TcpBbr", "TcpBbr", "TcpBbr", "TcpBbr", "TcpBbr"};
 //, "TcpCubic"
 std::vector<std::string> cwndPlotFilesnames = { };
 std::vector<std::string> rttPlotFilesnames = { };
 std::vector<std::string> throughputPlotFilesnames = { };
 
 double startTime = 0.1;
-double startOffset = 0;
+double startOffset = 20;
 int PORT = 50001;
 Time stopTime = Seconds(100);
 uint packetSize = 1448;
@@ -156,6 +156,18 @@ generatePlot(
 }
 
 
+
+void 
+progress(){
+    std::cout << "\033[2K"; // Clear the previous line
+    std::cout << "\033[A"; // Move the cursor up one line
+    std::cout.flush(); // Flush the output stream
+
+
+    std::cout << "Simulation progress: " << ( Simulator::Now().GetSeconds() / stopTime.GetSeconds() )*100 << "%" << std::endl;
+    Simulator::Schedule(Seconds(0.1), &progress);
+}
+
 int 
 main(
     int argc, 
@@ -274,7 +286,8 @@ main(
     }
     receiverApp.Start(Seconds(0.1));
     receiverApp.Stop(stopTime);
-
+    std::cout << "Running simulation" << std::endl;
+    Simulator::Schedule(Seconds(0), &progress);
 
     FlowMonitorHelper flowmonHelper;
     for (uint32_t i = 0; i < senders.GetN(); i++) {  
