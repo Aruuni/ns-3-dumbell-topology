@@ -10,27 +10,27 @@
 #include <iostream>
 #include <fstream>
 #include <cstdio>
-
+#include <iomanip>
+// #define 0 0,
 
 using namespace ns3;
 
-
 //simulation paramaters
-std::vector<std::string> cca = { "TcpBbr", "TcpBbr", "TcpBbr", "TcpBbr", "TcpBbr"};
+std::vector<std::string> cca = { "TcpBbr", "TcpBbr" };
 //, "TcpCubic"
 std::vector<std::string> cwndPlotFilesnames = { };
 std::vector<std::string> rttPlotFilesnames = { };
 std::vector<std::string> throughputPlotFilesnames = { };
 
-double startTime = 0.1;
-double startOffset = 20;
+double startTime = 0.1; // in seconds
+double startOffset = 20; // in seconds
 int PORT = 50001;
 Time stopTime = Seconds(100);
 uint packetSize = 1448;
 std::vector<std::string> colors = { "blue", "green", "red", "orange", "purple", "brown", "black", "yellow", "cyan", "magenta", "gray" };
-double throughPutReadingResolution = 0.05;
+double throughPutReadingResolution = 0.1;
 AsciiTraceHelper ascii;
-uint32_t bdp_multiplier = 1;
+uint32_t bdp_multiplier = 4;
 
 static void
 TraceThroughput(
@@ -129,11 +129,10 @@ generatePlot(
     if (gnuplotPipe) {
         fprintf(gnuplotPipe, "set terminal pngcairo enhanced color lw 1.5 font 'Times Roman'\n");
         fprintf(gnuplotPipe, "set autoscale x\n");
-        //fprintf(gnuplotPipe, "set autoscale y\n");
+        fprintf(gnuplotPipe, "set autoscale y\n");
         if (plotTitle == "Congestion Window")
-            fprintf(gnuplotPipe, "set yrange [0:2000]\n");
-        else 
-            fprintf(gnuplotPipe, "set yrange [0:*]\n");
+             fprintf(gnuplotPipe, "set yrange [:1500]\n");
+
         fprintf(gnuplotPipe, "set output \"%s.png\"\n", plotTitle.c_str());
         fprintf(gnuplotPipe, "set xlabel \"Time (sec)\"\n");
         fprintf(gnuplotPipe, "set ylabel \"%s\"\n", plotYLabel.c_str());
@@ -156,7 +155,6 @@ generatePlot(
 }
 
 
-
 void 
 progress(){
     std::cout << "\033[2K"; // Clear the previous line
@@ -164,7 +162,7 @@ progress(){
     std::cout.flush(); // Flush the output stream
 
 
-    std::cout << "Simulation progress: " << ( Simulator::Now().GetSeconds() / stopTime.GetSeconds() )*100 << "%" << std::endl;
+    std::cout << "Simulation progress: " << std::fixed << std::setprecision(2) << ((Simulator::Now().GetSeconds() / stopTime.GetSeconds())*100) << "%" << std::endl;
     Simulator::Schedule(Seconds(0.1), &progress);
 }
 
@@ -178,6 +176,7 @@ main(
     Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(6291456));
     Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(10)); 
     Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(2));
+    Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(packetSize));
     
     
     NodeContainer senders, receivers, routers;
@@ -190,10 +189,13 @@ main(
     botLink.SetDeviceAttribute("DataRate", StringValue("100Mbps"));
     botLink.SetChannelAttribute("Delay", StringValue("5ms"));
     botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string((100000 * 5 / packetSize) * bdp_multiplier) + "p")));
+    //botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize("1381p")));
 
     p2pLink.SetDeviceAttribute("DataRate", StringValue("1000Mbps"));
     p2pLink.SetChannelAttribute("Delay", StringValue("10ms"));
-    p2pLink.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string((1000000 * 10 / packetSize) * bdp_multiplier) + "p")));
+    p2pLink.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string((100000 * 5 / packetSize) * bdp_multiplier) + "p")));
+    //p2pLink.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize("1381p")));
+
 
     NetDeviceContainer routerDevices = botLink.Install(routers);
     NetDeviceContainer senderDevices, receiverDevices, leftRouterDevices, rightRouterDevices;
@@ -306,7 +308,7 @@ main(
     Simulator::Stop(stopTime + TimeStep(1));
     Simulator::Run();
 
-    //flowMonitor->SerializeToXmlFile("NameOfFile.xml", true, true);
+    flowMonitor->SerializeToXmlFile("NameOfFile.xml", true, true);
 
     generatePlot(cwndPlotFilesnames, "Congestion Window", "Cwnd (packets)");
     generatePlot(rttPlotFilesnames, "Round Trip Time", "RTT (ms)");
@@ -317,6 +319,13 @@ main(
     Simulator::Destroy();
 
     //cleans up the .dat files, uncomment if you want to keep them
-    for (uint32_t i = 0; i < cca.size(); i++){remove((cwndPlotFilesnames[i] + ".dat").c_str());remove((rttPlotFilesnames[i] + ".dat").c_str());remove((throughputPlotFilesnames[i] + ".dat").c_str());}remove("queueSize.dat");
+    for (uint32_t i = 0; i < cca.size(); i++)
+    {
+        remove((cwndPlotFilesnames[i] + ".dat").c_str());
+        remove((rttPlotFilesnames[i] + ".dat").c_str());
+        remove((throughputPlotFilesnames[i] + ".dat").c_str());
+        
+    }
+    remove("queueSize.dat");
     exit(0);
 }
