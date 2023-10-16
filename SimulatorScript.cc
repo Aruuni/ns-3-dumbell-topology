@@ -15,8 +15,14 @@
 
 using namespace ns3;
 
+// ./ns3 clean
+// ./ns3 configure --build-profile=optimized 
+// ./ns3
+
+
 //simulation paramaters
-std::vector<std::string> cca = { "TcpBbr" , "TcpBbr" , "TcpBbr"  };
+std::vector<std::string> cca = { "TcpBbr" , "TcpBbr" , "TcpBbr" , "TcpBbr" , "TcpBbr" };
+//std::vector<std::string> cca = { "TcpBbr"  };
 //, TcpCubic TcpBbr
 std::vector<std::string> cwndPlotFilesnames = { };
 std::vector<std::string> rttPlotFilesnames = { };
@@ -28,27 +34,28 @@ std::vector<std::string> packetDropFilesnames = { };
 
 
 double startTime = 0.1; // in seconds
-double startOffset = 25; // in seconds
+double startOffset = 5; // in seconds // WATCH OUT FOR THIS BEING LOWER THEN THE SIMUATLION END TIME
 int PORT = 50001;
-Time stopTime = Seconds(100);
+Time stopTime = Seconds(200);
 uint packetSize = 1460;
 std::vector<std::string> colors = { "blue", "green", "orange", "red", "purple", "brown", "black", "yellow", "cyan", "magenta", "gray" };
 double ReadingResolution = 0.1;
 AsciiTraceHelper ascii;
-uint32_t bdp_multiplier = 10;
+uint32_t bdp_multiplier = 5;
 
-int bottleneckLinkDataRate = 10;
+int bottleneckLinkDataRate = 50;
 int bottleneckLinkDelay = 5;
 
 int p2pLinkDataRate = 100;
 int p2pLinkDelay = 5;
 
+int p2pLinkOffset = 0;
 
 ///////  LOGGING ////////
 
 bool cleanup = true;
 bool plotScriptOut = false;
-bool progressLog = true;
+bool progressLog = false;
 
 
 //////////////////////////////////
@@ -119,7 +126,7 @@ CwndTracer(
     uint32_t newval
     )
 {
-    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval / packetSize << std::endl;
+    *stream->GetStream() << Simulator::Now().GetSeconds() << ", " << newval /* / packetSize */ << std::endl;
     //std::cout << Simulator::Now().GetSeconds() << "  |  " << newval / 1448.0 <<  " | "<< cca <<std::endl;
 }
 void
@@ -347,6 +354,49 @@ generatePlot(
     pclose(gnuplotPipe);
 }
 
+static void
+ChangeDelay(
+    NetDeviceContainer dev,
+    uint32_t delay
+    ) 
+{
+    dev.Get(0)->GetChannel()->GetObject<PointToPointChannel>()->SetAttribute("Delay", StringValue(std::to_string(delay)+"ms"));
+}
+
+static void
+DelayChanger(
+    NetDeviceContainer dev,
+    uint32_t time,
+    uint32_t delay
+    ) 
+{
+    Simulator::Schedule(Seconds(time), &ChangeDelay, dev, delay);
+}
+
+static void
+ChangeDataRate(
+    NetDeviceContainer dev,
+    uint32_t datarate
+    ) 
+{
+    Config::Set("/NodeList/" + std::to_string(cca.size()) + 
+                "/DeviceList/0" + 
+                "/$ns3::PointToPointNetDevice/DataRate", StringValue(std::to_string(datarate) + "Mbps") );
+    Config::Set("/NodeList/" + std::to_string(cca.size()+1) + 
+                "/DeviceList/0" + 
+                "/$ns3::PointToPointNetDevice/DataRate", StringValue(std::to_string(datarate) + "Mbps") );
+}
+
+static void
+DataRateChanger(
+    NetDeviceContainer dev,
+    double time,
+    uint32_t datarate
+    ) 
+{
+    Simulator::Schedule(Seconds(time), &ChangeDataRate, dev, datarate);
+}
+
 void 
 progress(){
     std::cout << "\033[2K"; // Clear the previous line
@@ -370,7 +420,8 @@ main(
     //Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(131072));
     Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(10)); 
     Config::SetDefault("ns3::TcpSocket::InitialSlowStartThreshold", UintegerValue(10)); 
-    Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(2));
+    Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(1));
+    //  Config::SetDefault("ns3::TcpSocket::DelAckTimeout", TimeValue(Seconds(0)));
     Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(packetSize));
     //Config::SetDefault("ns3::TcpSocketBase::WindowScaling", BooleanValue(true));
     Config::SetDefault("ns3::TcpSocketState::EnablePacing", BooleanValue(true));
@@ -381,35 +432,44 @@ main(
     // Config::SetDefault("ns3::DropTailQueue<Packet>::MaxSize", QueueSizeValue (QueueSize ("34p")));
     // Config::SetDefault("ns3::FifoQueueDisc::MaxSize", QueueSizeValue (QueueSize ("34p")));
 
-
     
     NodeContainer senders, receivers, routers;
     senders.Create(cca.size());
     receivers.Create(cca.size());
     routers.Create(2);
     
-    PointToPointHelper botLink, p2pLink;
+    PointToPointHelper botLink, p2pLinkLeft, p2pLinkRight;
 
     botLink.SetDeviceAttribute("DataRate", StringValue(std::to_string(bottleneckLinkDataRate) + "Mbps"));
     botLink.SetChannelAttribute("Delay", StringValue(std::to_string(bottleneckLinkDelay) + "ms"));
     botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay / packetSize) * bdp_multiplier) + "p")));
     std::cout << "Bottleneck link queue ............. >  " << std::to_string(((bottleneckLinkDataRate * 1000 ) * bottleneckLinkDelay / packetSize) * bdp_multiplier) + "p" << std::endl;
     
-    p2pLink.SetDeviceAttribute("DataRate", StringValue(std::to_string(p2pLinkDataRate) + "Mbps"));
-    p2pLink.SetChannelAttribute("Delay", StringValue(std::to_string(p2pLinkDelay) + "ms"));
-    //p2pLink.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string(((p2pLinkDataRate * 1000) * p2pLinkDelay / packetSize) * bdp_multiplier) + "p")));
-    std::cout << "P2P link queue .................... >  " << std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay / packetSize) * bdp_multiplier) + "p" << std::endl;
-    
+    p2pLinkLeft.SetDeviceAttribute("DataRate", StringValue(std::to_string(p2pLinkDataRate) + "Mbps"));
+    //p2pLinkLeft.SetChannelAttribute("Delay", StringValue(std::to_string(p2pLinkDelay) + "ms"));
+    //p2pLinkLeft.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string(((p2pLinkDataRate * 1000) * p2pLinkDelay / packetSize) * bdp_multiplier) + "p")));
+    // std::cout << "P2P link queue .................... >  " << std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay / packetSize) * bdp_multiplier) + "p" << std::endl;
+    // std::cout << "Senders " << senders.GetN() << std::endl;
+
+    p2pLinkRight.SetDeviceAttribute("DataRate", StringValue(std::to_string(p2pLinkDataRate) + "Mbps"));
+    p2pLinkRight.SetChannelAttribute("Delay", StringValue(std::to_string(p2pLinkDelay) + "ms"));
+    p2pLinkRight.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string(((p2pLinkDataRate * 1000) * p2pLinkDelay / packetSize) * bdp_multiplier) + "p")));
+
     NetDeviceContainer routerDevices = botLink.Install(routers);
     NetDeviceContainer senderDevices, receiverDevices, leftRouterDevices, rightRouterDevices;
     
     for(uint32_t i = 0; i < senders.GetN(); i++) {
-		NetDeviceContainer cleft = p2pLink.Install(routers.Get(0), senders.Get(i));
+        //p2pLinkLeft.SetDeviceAttribute("DataRate", StringValue(std::to_string(p2pLinkDataRate) + "Mbps"));
+        p2pLinkLeft.SetChannelAttribute("Delay", StringValue(std::to_string(p2pLinkDelay + (p2pLinkOffset * i)) + "ms"));
+        p2pLinkLeft.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string(((p2pLinkDataRate * 1000) * (p2pLinkDelay + (p2pLinkOffset * i)) / packetSize) * bdp_multiplier) + "p")));
+
+
+		NetDeviceContainer cleft = p2pLinkLeft.Install(routers.Get(0), senders.Get(i));
 		leftRouterDevices.Add(cleft.Get(0));
 		senderDevices.Add(cleft.Get(1));
 		//cleft.Get(0)->SetAttribute("ReceiveErrorModel", PointerValue(em));
 
-		NetDeviceContainer cright = p2pLink.Install(routers.Get(1), receivers.Get(i));
+		NetDeviceContainer cright = p2pLinkRight.Install(routers.Get(1), receivers.Get(i));
 		rightRouterDevices.Add(cright.Get(0));
 		receiverDevices.Add(cright.Get(1));
 		//cright.Get(0)->SetAttribute("ReceiveErrorModel", PointerValue(em));
@@ -468,9 +528,6 @@ main(
 
     Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
-
-
-
     ApplicationContainer senderApp, receiverApp;
     for (uint32_t i = 0; i < senders.GetN(); i++) {
         BulkSendHelper sender("ns3::TcpSocketFactory", InetSocketAddress(receiverIFCs.GetAddress(i), PORT));
@@ -516,26 +573,12 @@ main(
     FlowMonitorHelper flowmonHelper;
     flowMonitor = flowmonHelper.InstallAll();
     
+    // DataRateChanger(senderDevices, 16, 20);
+    // DataRateChanger(senderDevices, 32, 10);
 
 
     Simulator::Stop(stopTime + TimeStep(1));
     Simulator::Run();
-
-    flowMonitor->SerializeToXmlFile("NameOfFile.xml", true, true);
-    // cwndPlotFilesnames.push_back("zlogs/TcpBbr0-cwnd.csv");
-    // rttPlotFilesnames.push_back("zlogs/TcpBbr0-rtt.csv");
-    // throughputPlotFilesnames.push_back("zlogs/TcpBbr0-throughtput.csv");
-    // goodputPlotFilesnames.push_back("zlogs/TcpBbr0-goodput.csv");
-    // rwndPlotFilesnames.push_back("zlogs/TcpBbr0-rwnd.csv");
-    // bytesInFlightFilesnames.push_back("zlogs/TcpBbr0-bif.csv");
-
-    // cwndPlotFilesnames.push_back("zlogs/TcpBbr1-cwnd.csv");
-    // rttPlotFilesnames.push_back("zlogs/TcpBbr1-rtt.csv");
-    // throughputPlotFilesnames.push_back("zlogs/TcpBbr1-throughtput.csv");
-    // goodputPlotFilesnames.push_back("zlogs/TcpBbr1-goodput.csv");
-    // rwndPlotFilesnames.push_back("zlogs/TcpBbr1-rwnd.csv");
-    // bytesInFlightFilesnames.push_back("zlogs/TcpBbr1-bif.csv");
-
 
 
     generatePlot(cwndPlotFilesnames, "Congestion Window", "Cwnd (packets)");
