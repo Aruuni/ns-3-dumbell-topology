@@ -1,3 +1,5 @@
+echo "installing dependencies"
+sudp apt install cmake gnuplot
 echo "cloning ns3"
 git clone https://gitlab.com/nsnam/ns-3-dev.git
 cp SimulatorScript.cc ns-3-dev/scratch/
