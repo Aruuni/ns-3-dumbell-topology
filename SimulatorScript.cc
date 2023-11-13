@@ -21,7 +21,7 @@ using namespace ns3;
 
 
 //simulation paramaters
-std::vector<std::string> cca = { "TcpBbr" , "TcpBbr" , "TcpBbr" , "TcpBbr" , "TcpBbr" };
+std::vector<std::string> cca = { "TcpBbr" };
 //std::vector<std::string> cca = { "TcpBbr"  };
 //, TcpCubic TcpBbr
 std::vector<std::string> cwndPlotFilesnames = { };
@@ -36,14 +36,15 @@ std::vector<std::string> packetDropFilesnames = { };
 double startTime = 0.1; // in seconds
 double startOffset = 5; // in seconds // WATCH OUT FOR THIS BEING LOWER THEN THE SIMUATLION END TIME
 int PORT = 50001;
-Time stopTime = Seconds(200);
+Time stopTime = Seconds(50);
 uint packetSize = 1460;
 std::vector<std::string> colors = { "blue", "green", "orange", "red", "purple", "brown", "black", "yellow", "cyan", "magenta", "gray" };
+std::vector<std::string> colors2 = { "green", "orange", "red", "purple", "brown", "black", "yellow", "cyan", "magenta", "gray", "blue" };
 double ReadingResolution = 0.1;
 AsciiTraceHelper ascii;
 uint32_t bdp_multiplier = 5;
 
-int bottleneckLinkDataRate = 50;
+int bottleneckLinkDataRate = 10;
 int bottleneckLinkDelay = 5;
 
 int p2pLinkDataRate = 100;
@@ -354,6 +355,84 @@ generatePlot(
     pclose(gnuplotPipe);
 }
 
+void
+generateCwndInflight(
+    std::vector<std::string> cwndFileNames,
+    std::vector<std::string> inflightFileNames,
+    std::string plotTitle,
+    std::string plotYLabel
+)
+{
+    FILE *gnuplotPipe = popen("gnuplot -persist", "w");
+    if (gnuplotPipe) {
+        fprintf(gnuplotPipe, "set terminal pdf enhanced color dashed lw 1 font 'DejaVuSans,12'\n");
+        if (plotScriptOut)
+            std::cout << "set terminal pdf enhanced color dashed lw 1 font 'DejaVuSans,12'" << std::endl;
+       
+        fprintf(gnuplotPipe, "set style line 81 lt 0\n");
+        if (plotScriptOut)
+            std::cout << "set style line 81 lt 0"  << std::endl;
+        fprintf(gnuplotPipe, "set style line 81 lt rgb \"#aaaaaa\"\n");
+        if (plotScriptOut)
+            std::cout << "set style line 81 lt rgb \"#aaaaaa\""  << std::endl;
+        fprintf(gnuplotPipe, "set grid back linestyle 81\n");
+        if (plotScriptOut)
+            std::cout << "set grid back linestyle 81"  << std::endl;
+
+        fprintf(gnuplotPipe, "set border 3 back linestyle 80\n");
+        if (plotScriptOut)
+            std::cout << "set border 3 back linestyle 80"  << std::endl;
+        fprintf(gnuplotPipe, "set xtics nomirror\n");
+        if (plotScriptOut)
+            std::cout << "set xtics nomirror"  << std::endl;
+        fprintf(gnuplotPipe, "set ytics nomirror\n");
+        if (plotScriptOut)
+            std::cout << "set ytics nomirror"  << std::endl;
+
+        fprintf(gnuplotPipe, "set autoscale x\n");
+        if (plotScriptOut)
+            std::cout << "set autoscale x"  << std::endl;
+        fprintf(gnuplotPipe, "set autoscale y\n");
+        if (plotScriptOut)
+            std::cout << "set autoscale y"  << std::endl;
+       
+        //if (plotTitle == "Congestion Window")
+            //fprintf(gnuplotPipe, "set yrange [:100]\n");
+
+        fprintf(gnuplotPipe, "set output \"zout/%s.pdf\"\n", plotTitle.c_str());
+        if (plotScriptOut)
+            std::cout << "set output \"" << plotTitle << ".pdf\"" << std::endl;
+        fprintf(gnuplotPipe, "set title \"%s\"\n", plotTitle.c_str());
+        if (plotScriptOut)
+            std::cout << "set title \"" << plotTitle << "\"" << std::endl;
+        fprintf(gnuplotPipe, "set xlabel \"Time (sec)\"\n");
+        if (plotScriptOut)
+            std::cout << "set xlabel \"Time (sec)\"" << std::endl;
+        fprintf(gnuplotPipe, "set ylabel \"%s\"\n", plotYLabel.c_str());
+        if (plotScriptOut)
+            std::cout << "set ylabel \"" << plotYLabel << "\"" << std::endl;
+        fprintf(gnuplotPipe, "set key right top vertical\n");
+            if (plotScriptOut)
+        std::cout << "set key right top vertical" << std::endl;
+        std::string plotCommand = "plot ";
+        for (uint32_t i = 0; i < cwndFileNames.size(); i++) {
+            plotCommand += "\"" + cwndFileNames[i] + "\" title \"" + cca[i] +  std::to_string(i) + "cwnd" + "\" with lines lw 0.7 lc '" + colors[i] + "'";
+            plotCommand += ", ";
+            plotCommand += "\"" + inflightFileNames[i] + "\" title \"" + cca[i] +  std::to_string(i) + "bif" + "\" with lines lw 0.7 lc '" + colors2[i] + "'";
+            if (i != cwndFileNames.size() - 1)
+                plotCommand += ", ";
+        }
+        fprintf(gnuplotPipe, "%s", plotCommand.c_str());
+        if (plotScriptOut)
+            std::cout << plotCommand << std::endl;
+        fflush(gnuplotPipe);
+        std::cout << "Gnuplot" << plotTitle << " script executed successfully." << std::endl;
+    } else {
+        std::cerr << "Error opening gnuplot pipe." << std::endl;
+    }
+    pclose(gnuplotPipe);
+}
+
 static void
 ChangeDelay(
     NetDeviceContainer dev,
@@ -573,8 +652,8 @@ main(
     FlowMonitorHelper flowmonHelper;
     flowMonitor = flowmonHelper.InstallAll();
     
-    // DataRateChanger(senderDevices, 16, 20);
-    // DataRateChanger(senderDevices, 32, 10);
+    DelayChanger(senderDevices, 11, 50);
+    DelayChanger(senderDevices, 45, 5);
 
 
     Simulator::Stop(stopTime + TimeStep(1));
@@ -588,7 +667,7 @@ main(
     //generatePlot(rwndPlotFilesnames, "RWND", "RWND (bytes)");
     generatePlot(bytesInFlightFilesnames, "BytesInFlight", "BytesInFlight (bytes)");
     //generatePlot(packetDropFilesnames , "Packets Dropped", "Packets (segments)");
-
+    generateCwndInflight(cwndPlotFilesnames, bytesInFlightFilesnames, "Congestion Window and Bytes In Flight", "Bytes");
     std::vector<std::string>temp;
     temp.push_back("zlogs/queueSize.csv");
     generatePlot(temp, "Queue Size", "Queue Size (packets)");
@@ -609,3 +688,4 @@ main(
     remove((temp[0]).c_str());
     exit(0);
 }
+
