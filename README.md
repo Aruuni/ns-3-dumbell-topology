@@ -14,7 +14,7 @@ This ns-3 simulator script creates a dumbbell topology, which is commonly used f
 
 1. Install ns-3 following the instructions on the [ns-3 website]([https://www.nsnam.org/](https://www.nsnam.org/docs/installation/html/quick-start.html)).
 2. Copy the `SimulatorScript.cc` file in the scratch directory.
-3. Run it with ./ns3 run scratch/SimulatorScript.cc
+3. Run it with `./ns3 run scratch/SimulatorScript.cc`
 
 ## Script Configuration
 
