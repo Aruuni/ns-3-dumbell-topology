@@ -9,7 +9,7 @@ This ns-3 simulator script creates a dumbbell topology, which is commonly used f
 
 ## Requirements
 - [ns-3](https://www.nsnam.org/)
-
+- Run  `bash ns3-setup.sh` for a quick setup
 ## Setup
 
 1. Install ns-3 following the instructions on the [ns-3 website]([https://www.nsnam.org/](https://www.nsnam.org/docs/installation/html/quick-start.html)).
