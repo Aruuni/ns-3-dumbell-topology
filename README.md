@@ -7,14 +7,10 @@ This ns-3 simulator script creates a dumbbell topology, which is commonly used f
 ![image](https://github.com/Aruuni/ns-3-dumbell-topology/assets/20707335/e365ed52-fef0-44d4-a674-278310028836)
 
 
-## Requirements
+## Usage
 - [ns-3](https://www.nsnam.org/)
-- Run  `bash ns3-setup.sh` for a quick setup
-## Setup
-
-1. Install ns-3 following the instructions on the [ns-3 website]([https://www.nsnam.org/](https://www.nsnam.org/docs/installation/html/quick-start.html)).
-2. Copy the `SimulatorScript.cc` file in the scratch directory.
-3. Run it with `./ns3 run scratch/SimulatorScript.cc`
+- Run  `bash ns3-setup.sh` for a quick setup, which will install ns3 and configure the optimized build
+- Run the script with `./ns3 run scratch/SimulatorScript.cc`
 
 ## Script Configuration
 
