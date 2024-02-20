@@ -202,11 +202,8 @@ generatePlot(std::vector<std::vector<std::string>> fileNames, std::string plotTi
         int j = 0;
         for (const auto&  plot : fileNames ){
             for (uint32_t i = 0; i < plot.size(); i++) {
-                // in the future repalace 6 with the actual path length
                 plotCommand += "\"" + plot[i] + "\" title \"" + plot[i].substr(outpath.length(), plot[i].find('.') -outpath.length()) + "\" with steps lw 0.7 lc '" + colors[j][i] + "'";
                 plotCommand += " , ";
-                //if (i != plot.size() - 1)
-                   // plotCommand += ", ";
             }
             j++;
         }
@@ -257,7 +254,7 @@ generatePlot(std::vector<std::vector<std::string>> fileNames, std::string plotTi
 //     dev.Get(1)->SetAttribute("ReceiveErrorModel", PointerValue(em));;
 // }
 
-
+// cool looking progress bar
 void 
 progress(Time stop){
     uint8_t barWidth = 50;
@@ -328,7 +325,8 @@ main(
     //cmd.AddValue("boolArg", "a bool argument", boolArg);
     //cmd.AddValue("strArg", "a string argument", strArg);
     cmd.Parse (argc, argv);
-    cca.push_back(flowToAppend);
+    if (flowToAppend.size() > 0)
+        cca.push_back(flowToAppend);
     outpath = "scratch/" + outpath + "/";
     system(("mkdir -p "+ outpath).c_str());
     system(("mkdir -p "+ outpath + "pdf/").c_str());
