@@ -321,7 +321,8 @@ main(
     cmd.AddValue("appendFlow", "append a flow", flowToAppend);
     cmd.AddValue("seed", "append a flow", seed);
     //cmd.AddValue("stopTime", "an int argument", startTimeInt);
-    
+    // ./ns3 run "scratch/SimulatorScript.cc --stopTime=10 --flowStartOffset=8  --queueBDP=4 --botLinkDataRate=10 --botLinkDelay=10 --p2pLinkDelay=2.5  --path=test2 --seed=1"
+
     //cmd.AddValue("boolArg", "a bool argument", boolArg);
     //cmd.AddValue("strArg", "a string argument", strArg);
     cmd.Parse (argc, argv);
