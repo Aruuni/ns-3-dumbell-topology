@@ -296,7 +296,6 @@ main(
     int bottleneckLinkDataRate{10};
     int bottleneckLinkDelay{5};
     
-    int p2pLinkDelay{10}; // this is x2 for left and right
     int p2pLinkOffset{0}; // this is x2 
     int p2pLinkOffsetNFlows{0}; // not implemented
 
@@ -310,7 +309,6 @@ main(
 
     cmd.AddValue("botLinkDataRate", "datarate  of the bottleneck link in mbps", bottleneckLinkDataRate);
     cmd.AddValue("botLinkDelay", "delay of the bottleneck link in ms", bottleneckLinkDelay);
-    cmd.AddValue("p2pLinkDelay", "delay of the other links, from senders to middle routers in ms, this is x2 in the dumbell topology", p2pLinkDelay);
     cmd.AddValue("p2pLinkOffsetDelay", "an int argument", p2pLinkOffset); // finish this not working
     cmd.AddValue("p2pLinkOffsetNFlows", "an int argument", p2pLinkOffsetNFlows); // finish this not working
     cmd.AddValue("flowStartOffset", "an int argument", flowStartOffset);
@@ -321,10 +319,10 @@ main(
     cmd.AddValue("appendFlow", "append a flow", flowToAppend);
     cmd.AddValue("seed", "append a flow", seed);
     //cmd.AddValue("stopTime", "an int argument", startTimeInt);
-    // ./ns3 run "scratch/SimulatorScript.cc --stopTime=10 --flowStartOffset=8  --queueBDP=4 --botLinkDataRate=10 --botLinkDelay=10 --p2pLinkDelay=2.5  --path=test2 --seed=1"
-
+    
     //cmd.AddValue("boolArg", "a bool argument", boolArg);
     //cmd.AddValue("strArg", "a string argument", strArg);
+    // ./ns3 run "scratch/SimulatorScript.cc --stopTime=10 --flowStartOffset=8  --queueBDP=4 --botLinkDataRate=10 --botLinkDelay=100 --path=test2 --seed=1"
     cmd.Parse (argc, argv);
     if (flowToAppend.size() > 0)
         cca.push_back(flowToAppend);
@@ -378,10 +376,12 @@ main(
     std::cout << "Bottleneck link queue ............. >  " << std::to_string(((bottleneckLinkDataRate * 1000 ) * bottleneckLinkDelay / packetSize) * bdpMultiplier) + "p" << std::endl;
 
     // edge link 
-    p2pLinkLeft.SetDeviceAttribute("DataRate", StringValue(std::to_string(p2pLinkDataRate) + "Mbps"));
-    p2pLinkRight.SetDeviceAttribute("DataRate", StringValue(std::to_string(p2pLinkDataRate) + "Mbps"));
-    p2pLinkRight.SetChannelAttribute("Delay", StringValue(std::to_string(p2pLinkDelay) + "ms"));
-    p2pLinkRight.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string(((p2pLinkDataRate * 1000) * p2pLinkDelay / packetSize) * bdpMultiplier) + "p")));
+    p2pLinkLeft.SetDeviceAttribute("DataRate", StringValue("10Gbps"));
+    p2pLinkLeft.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay / packetSize) * bdpMultiplier) + "p")));
+
+    p2pLinkRight.SetDeviceAttribute("DataRate", StringValue("10Gbps"));
+    p2pLinkRight.SetChannelAttribute("Delay", StringValue("0ms"));
+    p2pLinkRight.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay / packetSize) * bdpMultiplier) + "p")));
     //p2pLinkRight.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize("2p")));
 
     NetDeviceContainer routerDevices = botLink.Install(routers);
@@ -397,12 +397,11 @@ main(
     //for connecting the netdevice containers
     for(uint32_t i = 0; i < senders.GetN(); i++) {
         //sets the delay of the left link for the varying rtt experiments
-        p2pLinkLeft.SetQueue("ns3::DropTailQueue", "MaxSize",  QueueSizeValue(QueueSize(std::to_string(((p2pLinkDataRate * 1000) * (p2pLinkDelay + (p2pLinkOffset * i)) / packetSize) * bdpMultiplier) + "p")));
         
         //if ( i > (senders.GetN() /2 - 1))
-        //    p2pLinkLeft.SetChannelAttribute("Delay", StringValue(std::to_string(p2pLinkDelay + (p2pLinkOffset )) + "ms"));
+        //    p2pLinkLeft.SetChannelAttribute("Delay", StringValue(std::to_string( (p2pLinkOffset )) + "ms"));
 
-        p2pLinkLeft.SetChannelAttribute("Delay", StringValue(std::to_string(p2pLinkDelay + (p2pLinkOffset * i)) + "ms"));
+        p2pLinkLeft.SetChannelAttribute("Delay", StringValue(std::to_string((p2pLinkOffset * i)) + "ms"));
 
 
 		NetDeviceContainer cleft = p2pLinkLeft.Install(routers.Get(0), senders.Get(i));
@@ -424,16 +423,16 @@ main(
     }
 
     TrafficControlHelper tch;
-    //tch.SetRootQueueDisc("ns3::FifoQueueDisc");
+    tch.SetRootQueueDisc("ns3::FifoQueueDisc");
     //tch.SetRootQueueDisc("ns3::FifoQueueDisc", "MaxSize", StringValue ());
-    tch.SetRootQueueDisc("ns3::TbfQueueDisc", 
-        "Burst", UintegerValue(1600), 
-        "Mtu", UintegerValue(packetSize),
-        "Rate", DataRateValue(DataRate(std::to_string(bottleneckLinkDataRate) + "Mbps")), 
-        "PeakRate", DataRateValue(DataRate(0)) 
-    );
+    // tch.SetRootQueueDisc("ns3::TbfQueueDisc", 
+    //     "Burst", UintegerValue(1600), 
+    //     "Mtu", UintegerValue(packetSize),
+    //     "Rate", DataRateValue(DataRate(std::to_string(bottleneckLinkDataRate) + "Mbps")), 
+    //     "PeakRate", DataRateValue(DataRate(0)) 
+    // );
 
-    tch.SetQueueLimits("ns3::DynamicQueueLimits", "HoldTime", StringValue("100ms"));
+    tch.SetQueueLimits("ns3::DynamicQueueLimits", "HoldTime", StringValue("1ms"));
     tch.Install(senderDevices);
     tch.Install(receiverDevices);
     tch.Install(leftRouterDevices);
