@@ -19,7 +19,7 @@
 using namespace ns3;
 
 
-std::vector<std::string> cca = { "TcpBbr3" }; // 
+std::vector<std::string> cca = {  }; // 
 std::vector<std::vector<std::string>> colors = {
 {
     "#00FF0000", // Blue
@@ -81,7 +81,7 @@ double startTime = 0.1; // in seconds
 
 int PORT = 50001;
 
-uint packetSize = 1460;
+uint packetSize = 1500;
 
 ///////  LOGGING ////////
 bool cleanup = false;
@@ -95,8 +95,8 @@ socketTrace(uint32_t idx, std::string varName, std::string path, auto callback)
     files.insert(std::make_pair(varName, std::vector<std::string>()));
     Config::ConnectWithoutContext("/NodeList/" + std::to_string(idx) + 
                                 "/$ns3::TcpL4Protocol/SocketList/0/" + path, 
-                                MakeBoundCallback(callback, ascii.CreateFileStream(outpath + cca[idx] + std::to_string(idx) + "-" + varName +".csv")));
-    files[varName].push_back(outpath + cca[idx] + std::to_string(idx) + "-" + varName + ".csv");
+                                MakeBoundCallback(callback, ascii.CreateFileStream(outpath + cca[idx] + std::string(" ") + std::to_string(idx+1) + "-" + varName +".csv")));
+    files[varName].push_back(outpath + cca[idx] + std::string(" ") + std::to_string(idx+1) + "-" + varName + ".csv");
 }
 // type tarcers, i dont process the data 
 static void
@@ -145,8 +145,8 @@ TraceThroughput(Ptr<FlowMonitor> monitor, Ptr<OutputStreamWrapper> stream, uint3
     *stream->GetStream() 
         << Simulator::Now().GetSeconds() 
         << ", "
-        //        << 8 * (statsNode.txBytes - prevTxBytes) / (1000000 * (Simulator::Now().GetSeconds() - prevTime.GetSeconds()))
-        << 8 * (statsNode.txBytes - prevTxBytes) / ((Simulator::Now().GetSeconds() - prevTime.GetSeconds()))
+        << 8 * (statsNode.txBytes - prevTxBytes) / (1000000 * (Simulator::Now().GetSeconds() - prevTime.GetSeconds()))
+        //<< 8 * (statsNode.txBytes - prevTxBytes) / ((Simulator::Now().GetSeconds() - prevTime.GetSeconds()))
         << std::endl;
     Simulator::Schedule(Seconds(0.1), &TraceThroughput, monitor, stream, flowID, statsNode.txBytes, Simulator::Now());
 }
@@ -183,13 +183,17 @@ generatePlot(std::vector<std::vector<std::string>> fileNames, std::string plotTi
 {
     FILE *gnuplotPipe = popen("gnuplot -persist", "w");
     if (gnuplotPipe) {
-        fprintf(gnuplotPipe, "set terminal pdf enhanced color dashed lw 1 font 'DejaVuSans,12'\n");
+        fprintf(gnuplotPipe, "set terminal pdf enhanced color dashed lw 1 font 'DejaVuSans,16' size 8in,2in\n");
+        //fprintf(gnuplotPipe, "set size ratio 0.5, 4\n");
         fprintf(gnuplotPipe, "set style line 81 lt 0\n");
-        fprintf(gnuplotPipe, "set style line 81 lt rgb \"#aaaaaa\"\n");
+        fprintf(gnuplotPipe, "set style line 81 lt rgb \"#000000\"\n");
         fprintf(gnuplotPipe, "set grid back linestyle 81\n");
+        fprintf(gnuplotPipe, "set key left top vertical font 'DejaVuSans,8'\n");
         fprintf(gnuplotPipe, "set border 3 back linestyle 80\n");
-        fprintf(gnuplotPipe, "set xtics nomirror\n");
-        fprintf(gnuplotPipe, "set ytics nomirror\n");
+        fprintf(gnuplotPipe, "set xtics 5 nomirror\n");
+        fprintf(gnuplotPipe, "set ytics auto nomirror\n");
+        fprintf(gnuplotPipe, "set tics font 'DejaVuSans,12'\n");
+        fprintf(gnuplotPipe, "set label font 'DejaVuSans,6'\n");
         fprintf(gnuplotPipe, "set autoscale x\n");
         fprintf(gnuplotPipe, "set autoscale y\n");
         fprintf(gnuplotPipe, "set output \"%s.pdf\"\n", (outPath + plotTitle).c_str());
@@ -197,7 +201,7 @@ generatePlot(std::vector<std::vector<std::string>> fileNames, std::string plotTi
         fprintf(gnuplotPipe, "set xlabel \"Time (sec)\"\n");
         fprintf(gnuplotPipe, "set ylabel \"%s\"\n", plotYLabel.c_str());
         fprintf(gnuplotPipe, "set key right top vertical\n");
-        
+        fprintf(gnuplotPipe, "set object 1 rectangle from graph 0,0 to graph 1,1 behind fillcolor rgb 'white' fillstyle solid border lc rgb 'black'\n");        
         std::string plotCommand = "plot ";
         int j = 0;
         for (const auto&  plot : fileNames ){
@@ -217,34 +221,34 @@ generatePlot(std::vector<std::vector<std::string>> fileNames, std::string plotTi
 
 // commented to supress a warning for debug mode, they do work 
 
-// static void
-// ChangeDelay(NetDeviceContainer dev, uint32_t delay) 
-// {
-//     dev.Get(0)->GetChannel()->GetObject<PointToPointChannel>()->SetAttribute("Delay", StringValue(std::to_string(delay)+"ms"));
-// }
+static void
+ChangeDelay(NetDeviceContainer dev, uint32_t delay) 
+{
+    dev.Get(0)->GetChannel()->GetObject<PointToPointChannel>()->SetAttribute("Delay", StringValue(std::to_string(delay)+"ms"));
+}
 
-// static void
-// DelayChanger(NetDeviceContainer dev, uint32_t time, uint32_t delay) 
-// {
-//     Simulator::Schedule(Seconds(time), &ChangeDelay, dev, delay);
-// }
+static void
+DelayChanger(NetDeviceContainer dev, uint32_t time, uint32_t delay) 
+{
+    Simulator::Schedule(Seconds(time), &ChangeDelay, dev, delay);
+}
 
-// static void
-// ChangeDataRate(NetDeviceContainer dev, uint32_t datarate) 
-// {
-//     Config::Set("/NodeList/" + std::to_string(cca.size()) + 
-//                 "/DeviceList/0" + 
-//                 "/$ns3::PointToPointNetDevice/DataRate", StringValue(std::to_string(datarate) + "Mbps") );
-//     Config::Set("/NodeList/" + std::to_string(cca.size()+1) + 
-//                 "/DeviceList/0" + 
-//                 "/$ns3::PointToPointNetDevice/DataRate", StringValue(std::to_string(datarate) + "Mbps") );
-// }
+static void
+ChangeDataRate(NetDeviceContainer dev, uint32_t datarate) 
+{
+    Config::Set("/NodeList/" + std::to_string(cca.size()) + 
+                "/DeviceList/0" + 
+                "/$ns3::PointToPointNetDevice/DataRate", StringValue(std::to_string(datarate) + "Mbps") );
+    Config::Set("/NodeList/" + std::to_string(cca.size()+1) + 
+                "/DeviceList/0" + 
+                "/$ns3::PointToPointNetDevice/DataRate", StringValue(std::to_string(datarate) + "Mbps") );
+}
 
-// static void
-// DataRateChanger(NetDeviceContainer dev, double time, uint32_t datarate) 
-// {
-//     Simulator::Schedule(Seconds(time), &ChangeDataRate, dev, datarate);
-// }
+static void
+DataRateChanger(NetDeviceContainer dev, double time, uint32_t datarate) 
+{
+    Simulator::Schedule(Seconds(time), &ChangeDataRate, dev, datarate);
+}
 
 // static void
 // ErrorChanger(NetDeviceContainer dev, double errorrate) 
@@ -306,7 +310,7 @@ main(
     
     std::string flows;
     std::string flowToAppend;
-
+    std::string flowToAppend2;
     cmd.AddValue("botLinkDataRate", "datarate  of the bottleneck link in mbps", bottleneckLinkDataRate);
     cmd.AddValue("botLinkDelay", "delay of the bottleneck link in ms", bottleneckLinkDelay);
     cmd.AddValue("p2pLinkOffsetDelay", "an int argument", p2pLinkOffset); // finish this not working
@@ -317,6 +321,7 @@ main(
     cmd.AddValue("path", "path of current experiment", outpath);
     cmd.AddValue("queueBDP", "multipel of bdp for queues", bdpMultiplier);
     cmd.AddValue("appendFlow", "append a flow", flowToAppend);
+    cmd.AddValue("appendFlow2", "append a flow", flowToAppend2);
     cmd.AddValue("seed", "append a flow", seed);
     //cmd.AddValue("stopTime", "an int argument", startTimeInt);
     
@@ -326,6 +331,8 @@ main(
     cmd.Parse (argc, argv);
     if (flowToAppend.size() > 0)
         cca.push_back(flowToAppend);
+    if (flowToAppend2.size() > 0)
+        cca.push_back(flowToAppend2);
     outpath = "scratch/" + outpath + "/";
     system(("mkdir -p "+ outpath).c_str());
     system(("mkdir -p "+ outpath + "pdf/").c_str());
@@ -344,7 +351,7 @@ main(
     //Config::SetDefault("ns3::TcpSocket::RcvBufSize", UintegerValue(131072));
     Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(10)); 
     Config::SetDefault("ns3::TcpSocket::InitialSlowStartThreshold", UintegerValue(10)); 
-    Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(2));
+    Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(1));
     //  Config::SetDefault("ns3::TcpSocket::DelAckTimeout", TimeValue(Seconds(0)));
     Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(packetSize));
     //Config::SetDefault("ns3::TcpSocketBase::WindowScaling", BooleanValue(true));
@@ -372,22 +379,22 @@ main(
     // bottleneck link
     botLink.SetDeviceAttribute("DataRate", StringValue(std::to_string(bottleneckLinkDataRate) + "Mbps"));
     botLink.SetChannelAttribute("Delay", StringValue(std::to_string(bottleneckLinkDelay) + "ms"));
-    botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay / packetSize) * bdpMultiplier) + "p")));
-    std::cout << "Bottleneck link queue ............. >  " << std::to_string(((bottleneckLinkDataRate * 1000 ) * bottleneckLinkDelay / packetSize) * bdpMultiplier) + "p" << std::endl;
+    botLink.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string((((bottleneckLinkDataRate * 1000) * (bottleneckLinkDelay*2) / packetSize) * bdpMultiplier) / 8 ) + "p")));
+    std::cout << "Bottleneck link queue ............. >  " << std::to_string((((bottleneckLinkDataRate * 1000 ) * (bottleneckLinkDelay*2) / packetSize) * bdpMultiplier ) / 8 ) + "p" << std::endl;
 
     // edge link 
     p2pLinkLeft.SetDeviceAttribute("DataRate", StringValue("10Gbps"));
-    p2pLinkLeft.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay / packetSize) * bdpMultiplier) + "p")));
+    p2pLinkLeft.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string((((bottleneckLinkDataRate * 1000) * (bottleneckLinkDelay*2) / packetSize) * bdpMultiplier) / 8 ) + "p")));
 
     p2pLinkRight.SetDeviceAttribute("DataRate", StringValue("10Gbps"));
     p2pLinkRight.SetChannelAttribute("Delay", StringValue("0ms"));
-    p2pLinkRight.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay / packetSize) * bdpMultiplier) + "p")));
+    p2pLinkRight.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize(std::to_string((((bottleneckLinkDataRate * 1000) * (bottleneckLinkDelay*2) / packetSize) * bdpMultiplier) / 8 ) + "p")));
     //p2pLinkRight.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(QueueSize("2p")));
 
     NetDeviceContainer routerDevices = botLink.Install(routers);
     //error rate ?????
     Ptr<RateErrorModel> em = CreateObject<RateErrorModel>();
-    em->SetAttribute("ErrorRate", DoubleValue(0.000001));
+    em->SetAttribute("ErrorRate", DoubleValue(0.00001));
     //routerDevices.Get(1)->SetAttribute("ReceiveErrorModel", PointerValue(em));
     
     //Simulator::Schedule(Seconds(6), &ErrorChanger, routerDevices);
@@ -424,15 +431,15 @@ main(
 
     TrafficControlHelper tch;
     tch.SetRootQueueDisc("ns3::FifoQueueDisc");
-    //tch.SetRootQueueDisc("ns3::FifoQueueDisc", "MaxSize", StringValue ());
+    // tch.SetRootQueueDisc("ns3::FifoQueueDisc");
     // tch.SetRootQueueDisc("ns3::TbfQueueDisc", 
     //     "Burst", UintegerValue(1600), 
     //     "Mtu", UintegerValue(packetSize),
+    //     "MaxSize" , QueueSizeValue(QueueSize(std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay / packetSize) * bdpMultiplier) + "p")),
     //     "Rate", DataRateValue(DataRate(std::to_string(bottleneckLinkDataRate) + "Mbps")), 
-    //     "PeakRate", DataRateValue(DataRate(0)) 
+    //     "PeakRate", DataRateValue(DataRate(0))
     // );
 
-    tch.SetQueueLimits("ns3::DynamicQueueLimits", "HoldTime", StringValue("1ms"));
     tch.Install(senderDevices);
     tch.Install(receiverDevices);
     tch.Install(leftRouterDevices);
@@ -447,7 +454,6 @@ main(
 
     Ipv4InterfaceContainer routerIFC, senderIFCs, receiverIFCs, leftRouterIFCs, rightRouterIFCs;
     routerIFC = routerIP.Assign(routerDevices); 
-
 
     for(uint32_t i = 0; i < senders.GetN(); i++) {
 		NetDeviceContainer senderDevice;
@@ -474,7 +480,6 @@ main(
     ApplicationContainer senderApp, receiverApp;
     // variable tracing / installing the apps
     for (uint32_t i = 0; i < senders.GetN(); i++) {
-        
         BulkSendHelper sender("ns3::TcpSocketFactory", InetSocketAddress(receiverIFCs.GetAddress(i), PORT));
         sender.SetAttribute("MaxBytes", UintegerValue(0)); // Unlimited data
         senderApp.Add(sender.Install(senders.Get(i)));
@@ -483,19 +488,18 @@ main(
         Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "bif", "BytesInFlight",  &uint32Tracer);
         Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "cwnd", "CongestionWindow", &uint32Tracer);
         Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&TimeTracer)>,  senders.Get(i)->GetId(), "rtt", "RTT",  &TimeTracer);
-        if (cca[i] == "TcpBbr"){
-            Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "maxBw", "CongestionOps/$ns3::TcpBbr/maxBw",  &uint32Tracer);
+        // if (cca[i] == "TcpBbr"){
 
-        }
+        // }
         if (cca[i] == "TcpBbr3"){
+            //Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "maxBw", "CongestionOps/$ns3::TcpBbr/maxBw",  &uint32Tracer);
             Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&DataRateTracer)>,  senders.Get(i)->GetId(), "pacing", "PacingRate",  &DataRateTracer);
             Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "wildcard", "CongestionOps/$ns3::TcpBbr3/wildcard",  &uint32Tracer);
             Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "inflightLo", "CongestionOps/$ns3::TcpBbr3/inflightLo",  &uint32Tracer);
             Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "inflightHi", "CongestionOps/$ns3::TcpBbr3/inflightHi",  &uint32Tracer);
             Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "maxBw", "CongestionOps/$ns3::TcpBbr3/maxBw",  &uint32Tracer);
-        }
-        
 
+        }
     }
     senderApp.Stop(stopTime);
 
@@ -527,22 +531,22 @@ main(
     Ptr<FlowMonitor> flowMonitor;
     FlowMonitorHelper flowmonHelper;
     flowMonitor = flowmonHelper.InstallAll();
-    
-    //DataRateChanger(senderDevices, 12, 20);
-    //DelayChanger(senderDevices, 11, 50);
-    //DelayChanger(senderDevices, 45, 5);
+    //DataRateChanger(senderDevices, 45, bottleneckLinkDataRate * 2);
+    // DataRateChanger(senderDevices, 49, bottleneckLinkDataRate);
+    // DelayChanger(senderDevices, 69, bottleneckLinkDelay);
+    // DelayChanger(senderDevices, 89, 0);
 
 
     Simulator::Stop(stopTime + TimeStep(1));
     Simulator::Run();
     std::string pdfPath = outpath + "pdf/";
 
-    generatePlot({files["cwnd"]}, "Congestion Window", "Cwnd (packets)", pdfPath);
+    //generatePlot({files["cwnd"]}, "Congestion Window", "Cwnd (packets)", pdfPath);
     generatePlot({files["wildcard"]}, "wildcard", "?", pdfPath);
     generatePlot({files["rtt"]}, "Round Trip Time", "RTT (ms)", pdfPath);
     generatePlot({files["pacing"]}, "Pacing", "Pacing (Mbps)", pdfPath);
-    generatePlot({files["inflight_hi"], files["inflight_lo"]}, "Inflight Low and High", "bytes", pdfPath);
-    generatePlot({files["throughtput"]}, "Throughput", "bps", pdfPath);
+    generatePlot({files["cwnd"], files["bif"], files["inflightLo"], files["inflightHi"]}, "Inflight Low and High", "bytes", pdfPath);
+    generatePlot({files["throughtput"]}, "Throughput", "mbps", pdfPath);
     generatePlot({files["goodput"]}, "Goodput", "bps", pdfPath);
     generatePlot({files["maxBw"]}, "Max bandwidth estimate", "bps", pdfPath);
 
