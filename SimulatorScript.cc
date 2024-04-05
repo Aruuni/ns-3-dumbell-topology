@@ -19,7 +19,7 @@
 using namespace ns3;
 
 
-std::vector<std::string> cca = {  }; // 
+std::vector<std::string> cca = { "TcpBbr3", "TcpBbr3", "TcpBbr3", "TcpBbr3", "TcpBbr3", "TcpBbr3" }; // 
 std::vector<std::vector<std::string>> colors = {
 {
     "#00FF0000", // Blue
@@ -71,16 +71,14 @@ std::vector<std::vector<std::string>> colors = {
 // build ns 3
 // ./ns3 clean
 // ./ns3 configure --build-profile=optimized 
-// ./ns3 run scratch/SimulatorScript.cc 
+// ./ns3 run "scratch/SimulatorScript.cc --stopTime=60 --appendFlow=TcpNewReno --queueBDP=1 --botLinkDataRate=25 --botLinkDelay=15 --path=ratetest --seed=234"
 AsciiTraceHelper ascii;
 std::unordered_map<std::string, std::vector<std::string>> files;
 
 //simulation paramaters
 std::string outpath;
 double startTime = 0.1; // in seconds
-
 int PORT = 50001;
-
 uint packetSize = 1500;
 
 ///////  LOGGING ////////
@@ -198,7 +196,7 @@ generatePlot(std::vector<std::vector<std::string>> fileNames, std::string plotTi
         fprintf(gnuplotPipe, "set autoscale y\n");
         fprintf(gnuplotPipe, "set output \"%s.pdf\"\n", (outPath + plotTitle).c_str());
         fprintf(gnuplotPipe, "set title \"%s\"\n", plotTitle.c_str());
-        fprintf(gnuplotPipe, "set xlabel \"Time (sec)\"\n");
+        fprintf(gnuplotPipe, "set xlabel \"Time (seconds)\"\n");
         fprintf(gnuplotPipe, "set ylabel \"%s\"\n", plotYLabel.c_str());
         fprintf(gnuplotPipe, "set key right top vertical\n");
         fprintf(gnuplotPipe, "set object 1 rectangle from graph 0,0 to graph 1,1 behind fillcolor rgb 'white' fillstyle solid border lc rgb 'black'\n");        
@@ -219,8 +217,7 @@ generatePlot(std::vector<std::vector<std::string>> fileNames, std::string plotTi
     pclose(gnuplotPipe);
 }
 
-// commented to supress a warning for debug mode, they do work 
-
+//commented to supress a warning for debug mode, they do work 
 static void
 ChangeDelay(NetDeviceContainer dev, uint32_t delay) 
 {
@@ -250,15 +247,15 @@ DataRateChanger(NetDeviceContainer dev, double time, uint32_t datarate)
     Simulator::Schedule(Seconds(time), &ChangeDataRate, dev, datarate);
 }
 
-// static void
-// ErrorChanger(NetDeviceContainer dev, double errorrate) 
-// {
-//     Ptr<RateErrorModel> em = CreateObject<RateErrorModel>();
-//     em->SetAttribute("ErrorRate", DoubleValue(errorrate));
-//     dev.Get(1)->SetAttribute("ReceiveErrorModel", PointerValue(em));;
-// }
+static void
+ErrorChanger(NetDeviceContainer dev, double errorrate) 
+{
+    Ptr<RateErrorModel> em = CreateObject<RateErrorModel>();
+    em->SetAttribute("ErrorRate", DoubleValue(errorrate));
+    dev.Get(1)->SetAttribute("ReceiveErrorModel", PointerValue(em));;
+}
 
-// cool looking progress bar
+//cool looking progress bar
 void 
 progress(Time stop){
     uint8_t barWidth = 50;
@@ -292,6 +289,7 @@ main(
 {
     //std::vector<std::string> cca = { "TcpBbr" , "TcpCubic"}; // 
     int seed{1};
+    int timeToSend{0};
     double bdpMultiplier{1};
     int startTimeInt{50};
     double flowStartOffset{0}; // in seconds // WATCH OUT FOR THIS BEING LOWER THEN THE SIMUATLION END TIME
@@ -315,6 +313,7 @@ main(
     cmd.AddValue("botLinkDelay", "delay of the bottleneck link in ms", bottleneckLinkDelay);
     cmd.AddValue("p2pLinkOffsetDelay", "an int argument", p2pLinkOffset); // finish this not working
     cmd.AddValue("p2pLinkOffsetNFlows", "an int argument", p2pLinkOffsetNFlows); // finish this not working
+    cmd.AddValue("timeToSend", "an int argument", timeToSend); // finish this not working
     cmd.AddValue("flowStartOffset", "an int argument", flowStartOffset);
     cmd.AddValue("stopTime", "Duration of the experiment in seconds", startTimeInt);
     cmd.AddValue("flows", "caa of flows", flows); // parse comma separated  
@@ -394,7 +393,7 @@ main(
     NetDeviceContainer routerDevices = botLink.Install(routers);
     //error rate ?????
     Ptr<RateErrorModel> em = CreateObject<RateErrorModel>();
-    em->SetAttribute("ErrorRate", DoubleValue(0.00001));
+    em->SetAttribute("ErrorRate", DoubleValue(0.000008));
     //routerDevices.Get(1)->SetAttribute("ReceiveErrorModel", PointerValue(em));
     
     //Simulator::Schedule(Seconds(6), &ErrorChanger, routerDevices);
@@ -405,8 +404,8 @@ main(
     for(uint32_t i = 0; i < senders.GetN(); i++) {
         //sets the delay of the left link for the varying rtt experiments
         
-        //if ( i > (senders.GetN() /2 - 1))
-        //    p2pLinkLeft.SetChannelAttribute("Delay", StringValue(std::to_string( (p2pLinkOffset )) + "ms"));
+        if ( i > (senders.GetN() /2 - 1))
+           p2pLinkLeft.SetChannelAttribute("Delay", StringValue(std::to_string( (p2pLinkOffset )) + "ms"));
 
         p2pLinkLeft.SetChannelAttribute("Delay", StringValue(std::to_string((p2pLinkOffset * i)) + "ms"));
 
@@ -430,15 +429,14 @@ main(
     }
 
     TrafficControlHelper tch;
-    tch.SetRootQueueDisc("ns3::FifoQueueDisc");
-    // tch.SetRootQueueDisc("ns3::FifoQueueDisc");
-    // tch.SetRootQueueDisc("ns3::TbfQueueDisc", 
-    //     "Burst", UintegerValue(1600), 
-    //     "Mtu", UintegerValue(packetSize),
-    //     "MaxSize" , QueueSizeValue(QueueSize(std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay / packetSize) * bdpMultiplier) + "p")),
-    //     "Rate", DataRateValue(DataRate(std::to_string(bottleneckLinkDataRate) + "Mbps")), 
-    //     "PeakRate", DataRateValue(DataRate(0))
-    // );
+    //tch.SetRootQueueDisc("ns3::FifoQueueDisc");
+    tch.SetRootQueueDisc("ns3::TbfQueueDisc", 
+        "Burst", UintegerValue(1600), 
+        "Mtu", UintegerValue(packetSize),
+        "MaxSize" , QueueSizeValue(QueueSize(std::to_string(((bottleneckLinkDataRate * 1000) * bottleneckLinkDelay / packetSize) * bdpMultiplier) + "p")),
+        "Rate", DataRateValue(DataRate(std::to_string(bottleneckLinkDataRate) + "Mbps")), 
+        "PeakRate", DataRateValue(DataRate(0))
+    );
 
     tch.Install(senderDevices);
     tch.Install(receiverDevices);
@@ -488,11 +486,11 @@ main(
         Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "bif", "BytesInFlight",  &uint32Tracer);
         Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "cwnd", "CongestionWindow", &uint32Tracer);
         Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&TimeTracer)>,  senders.Get(i)->GetId(), "rtt", "RTT",  &TimeTracer);
-        // if (cca[i] == "TcpBbr"){
 
-        // }
+        Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "ackElapsed", "TcpRateSampler/ackElapsed",  &uint32Tracer);
+        Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "sndElapsed", "TcpRateSampler/sndElapsed",  &uint32Tracer);
+        
         if (cca[i] == "TcpBbr3"){
-            //Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "maxBw", "CongestionOps/$ns3::TcpBbr/maxBw",  &uint32Tracer);
             Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&DataRateTracer)>,  senders.Get(i)->GetId(), "pacing", "PacingRate",  &DataRateTracer);
             Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "wildcard", "CongestionOps/$ns3::TcpBbr3/wildcard",  &uint32Tracer);
             Simulator::Schedule(Seconds(startTime +  (flowStartOffset * i)) + MilliSeconds(1), &socketTrace<decltype(&uint32Tracer)>,  senders.Get(i)->GetId(), "inflightLo", "CongestionOps/$ns3::TcpBbr3/inflightLo",  &uint32Tracer);
@@ -531,8 +529,8 @@ main(
     Ptr<FlowMonitor> flowMonitor;
     FlowMonitorHelper flowmonHelper;
     flowMonitor = flowmonHelper.InstallAll();
-    //DataRateChanger(senderDevices, 45, bottleneckLinkDataRate * 2);
-    // DataRateChanger(senderDevices, 49, bottleneckLinkDataRate);
+    //DataRateChanger(senderDevices, 30, bottleneckLinkDataRate * 2);
+    //DataRateChanger(senderDevices, 49, bottleneckLinkDataRate);
     // DelayChanger(senderDevices, 69, bottleneckLinkDelay);
     // DelayChanger(senderDevices, 89, 0);
 
@@ -541,7 +539,10 @@ main(
     Simulator::Run();
     std::string pdfPath = outpath + "pdf/";
 
-    //generatePlot({files["cwnd"]}, "Congestion Window", "Cwnd (packets)", pdfPath);
+
+    // can combo plots as long as Y is the same
+    //generatePlot({files["cwnd"]}, "Congestion Window", "Cwnd (packets)", pdfPath);#
+    generatePlot({files["ackElapsed"], files["sndElapsed"]}, "ackAndSendndElapsed", "milliseconds" , pdfPath);
     generatePlot({files["wildcard"]}, "wildcard", "?", pdfPath);
     generatePlot({files["rtt"]}, "Round Trip Time", "RTT (ms)", pdfPath);
     generatePlot({files["pacing"]}, "Pacing", "Pacing (Mbps)", pdfPath);
